@@ -1,0 +1,11 @@
+/vendor/
+/.phpstan-cache/
+/.php-cs-fixer.cache
+composer.lock
+.phpunit.result.cache
+.pest-cache/
+/coverage/
+.env
+.DS_Store
+.tldr
+.tldrignore
