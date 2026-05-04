@@ -4,130 +4,107 @@ declare(strict_types=1);
 
 namespace Omniship\MNG\Message;
 
+use Omniship\Common\Exception\HttpException;
 use Omniship\Common\Message\ResponseInterface;
 
+/**
+ * Tracking is two queries against /standardqueryapi:
+ *   - /trackshipment/{referenceId} → list of shipment movements
+ *   - /getshipmentstatus/{referenceId} → headline status (single object)
+ *
+ * The combined result lets GetTrackingStatusResponse build a TrackingInfo
+ * with both the headline status and the event timeline.
+ */
 class GetTrackingStatusRequest extends AbstractMngRequest
 {
+    private const TRACK_PATH = '/mngapi/api/standardqueryapi/trackshipment/';
+    private const STATUS_PATH = '/mngapi/api/standardqueryapi/getshipmentstatus/';
+
+    protected function getEndpoint(): string
+    {
+        return self::TRACK_PATH . rawurlencode($this->resolveReference());
+    }
+
+    protected function getHttpMethod(): string
+    {
+        return 'GET';
+    }
+
     /**
      * @return array<string, mixed>
      */
     public function getData(): array
     {
-        $this->validate('username', 'password', 'trackingNumber');
+        $this->validate('clientId', 'clientSecret', 'customerNumber', 'password');
 
-        return [
-            'pRfSipGnMusteriNo' => $this->getUsername() ?? '',
-            'pRfSipGnMusteriSifre' => $this->getPassword() ?? '',
-            'pCHBarkod' => '',
-            'pCHFaturaSeri' => '',
-            'pCHFaturaNo' => '',
-            'pMngGonderiNo' => '',
-            'pCHSiparisNo' => $this->getTrackingNumber() ?? '',
-            'pGonderiCikisTarihi' => '',
-        ];
+        if ($this->getReferenceId() === null && $this->getTrackingNumber() === null) {
+            throw new \Omniship\Common\Exception\InvalidRequestException(
+                'Either referenceId or trackingNumber must be provided.',
+            );
+        }
+
+        return [];
+    }
+
+    protected function createResponse(mixed $data): ResponseInterface
+    {
+        $reference = $this->resolveReference();
+        $statusBody = $this->fetchHeadlineStatus($reference);
+
+        $events = is_array($data)
+            ? (is_array($data['body'] ?? null) ? $data['body'] : [])
+            : [];
+
+        return new GetTrackingStatusResponse($this, [
+            'reference' => $reference,
+            'events' => $events,
+            'status' => $statusBody,
+        ]);
     }
 
     /**
-     * @param array<string, mixed> $data
+     * @return array<string, mixed>|null
      */
-    public function sendData(array $data): ResponseInterface
+    private function fetchHeadlineStatus(string $reference): ?array
     {
-        $soapBody = $this->buildTrackingXml($data);
-        $body = $this->sendSoapRequest('GelecekIadeSiparisKontrol', $soapBody);
+        $response = $this->sendHttpRequest(
+            method: 'GET',
+            url: $this->getBaseUrl() . self::STATUS_PATH . rawurlencode($reference),
+            headers: [
+                'X-IBM-Client-Id' => $this->getClientId(),
+                'X-IBM-Client-Secret' => $this->getClientSecret(),
+                'Authorization' => 'Bearer ' . $this->fetchJwt(),
+                'Accept' => 'application/json',
+            ],
+        );
 
-        $parsed = $this->parseResponse($body);
+        $body = (string) $response->getBody();
+        $statusCode = $response->getStatusCode();
 
-        return $this->response = new GetTrackingStatusResponse($this, $parsed);
+        if ($statusCode === 404) {
+            return null;
+        }
+
+        if ($statusCode >= 400) {
+            throw new HttpException(
+                "MNG getShipmentStatus failed with HTTP {$statusCode}: {$body}",
+            );
+        }
+
+        if ($body === '') {
+            return null;
+        }
+
+        /** @var array<string, mixed>|null $decoded */
+        $decoded = json_decode($body, true, 512, JSON_THROW_ON_ERROR);
+
+        return is_array($decoded) ? $decoded : null;
     }
 
-    /**
-     * @param array<string, mixed> $data
-     */
-    private function buildTrackingXml(array $data): string
+    private function resolveReference(): string
     {
-        return '<GelecekIadeSiparisKontrol xmlns="http://tempuri.org/">'
-            . '<pRfSipGnMusteriNo>' . $this->xmlEscape((string) $data['pRfSipGnMusteriNo']) . '</pRfSipGnMusteriNo>'
-            . '<pRfSipGnMusteriSifre>' . $this->xmlEscape((string) $data['pRfSipGnMusteriSifre']) . '</pRfSipGnMusteriSifre>'
-            . '<pCHBarkod>' . $this->xmlEscape((string) $data['pCHBarkod']) . '</pCHBarkod>'
-            . '<pCHFaturaSeri>' . $this->xmlEscape((string) $data['pCHFaturaSeri']) . '</pCHFaturaSeri>'
-            . '<pCHFaturaNo>' . $this->xmlEscape((string) $data['pCHFaturaNo']) . '</pCHFaturaNo>'
-            . '<pMngGonderiNo>' . $this->xmlEscape((string) $data['pMngGonderiNo']) . '</pMngGonderiNo>'
-            . '<pCHSiparisNo>' . $this->xmlEscape((string) $data['pCHSiparisNo']) . '</pCHSiparisNo>'
-            . '<pGonderiCikisTarihi>' . $this->xmlEscape((string) $data['pGonderiCikisTarihi']) . '</pGonderiCikisTarihi>'
-            . '</GelecekIadeSiparisKontrol>';
-    }
+        $reference = $this->getReferenceId() ?? $this->getTrackingNumber() ?? '';
 
-    /**
-     * Parse the GelecekIadeSiparisKontrolResponse SOAP body.
-     *
-     * The response contains a .NET DataSet in diffgram format.
-     *
-     * @return array<string, mixed>
-     */
-    private function parseResponse(\SimpleXMLElement $body): array
-    {
-        $body->registerXPathNamespace('tns', 'http://tempuri.org/');
-
-        // Check for SOAP fault
-        $faults = $body->xpath('.//faultstring');
-        if ($faults !== false && isset($faults[0])) {
-            return [
-                'Success' => false,
-                'Message' => (string) $faults[0],
-                'Shipment' => null,
-            ];
-        }
-
-        $resultNodes = $body->xpath('.//tns:GelecekIadeSiparisKontrolResult');
-
-        if ($resultNodes === false || !isset($resultNodes[0])) {
-            return [
-                'Success' => false,
-                'Message' => 'No tracking data found',
-                'Shipment' => null,
-            ];
-        }
-
-        $result = $resultNodes[0];
-
-        // Parse the diffgram DataSet — find Table1 element
-        $result->registerXPathNamespace('diffgr', 'urn:schemas-microsoft-com:xml-diffgram-v1');
-
-        // Try multiple paths for the Table1 element within the DataSet
-        $table = $result->xpath('.//Table1');
-
-        if ($table === false || !isset($table[0])) {
-            // Try within diffgram namespace
-            $diffgram = $result->xpath('.//diffgr:diffgram');
-            if ($diffgram !== false && isset($diffgram[0])) {
-                $children = $diffgram[0]->children();
-                foreach ($children as $dataSet) {
-                    foreach ($dataSet->children() as $row) {
-                        $table = [$row];
-                        break 2;
-                    }
-                }
-            }
-        }
-
-        if (!isset($table[0])) {
-            return [
-                'Success' => true,
-                'Message' => 'No shipment data in response',
-                'Shipment' => null,
-            ];
-        }
-
-        $row = $table[0];
-        $shipment = [];
-        foreach ($row->children() as $child) {
-            $shipment[$child->getName()] = (string) $child;
-        }
-
-        return [
-            'Success' => true,
-            'Message' => 'OK',
-            'Shipment' => $shipment,
-        ];
+        return $this->normalizeReference($reference);
     }
 }

@@ -11,7 +11,9 @@ class CancelShipmentResponse extends AbstractResponse implements CancelResponse
 {
     public function isSuccessful(): bool
     {
-        return $this->getResult() === '1';
+        $status = $this->httpStatus();
+
+        return $status !== null && $status >= 200 && $status < 300;
     }
 
     public function isCancelled(): bool
@@ -21,24 +23,55 @@ class CancelShipmentResponse extends AbstractResponse implements CancelResponse
 
     public function getMessage(): ?string
     {
-        if (!is_array($this->data) || !isset($this->data['Message'])) {
-            return null;
+        $body = $this->body();
+
+        if (is_array($body)) {
+            if (isset($body['title']) && is_string($body['title'])) {
+                return $body['title'];
+            }
+            if (isset($body['detail']) && is_string($body['detail'])) {
+                return $body['detail'];
+            }
         }
 
-        return (string) $this->data['Message'];
+        if (is_string($body)) {
+            return $body;
+        }
+
+        return null;
     }
 
     public function getCode(): ?string
     {
-        return $this->getResult();
+        $status = $this->httpStatus();
+
+        return $status === null ? null : (string) $status;
     }
 
-    private function getResult(): ?string
+    private function httpStatus(): ?int
     {
-        if (!is_array($this->data) || !isset($this->data['Result'])) {
+        if (!is_array($this->data) || !isset($this->data['status'])) {
             return null;
         }
 
-        return (string) $this->data['Result'];
+        return is_int($this->data['status']) ? $this->data['status'] : null;
+    }
+
+    /**
+     * @return array<string, mixed>|string|null
+     */
+    private function body(): array|string|null
+    {
+        if (!is_array($this->data) || !isset($this->data['body'])) {
+            return null;
+        }
+
+        $body = $this->data['body'];
+
+        if (is_array($body)) {
+            return $body;
+        }
+
+        return is_string($body) ? $body : null;
     }
 }

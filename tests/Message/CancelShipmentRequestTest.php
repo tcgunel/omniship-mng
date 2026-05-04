@@ -5,94 +5,82 @@ declare(strict_types=1);
 use Omniship\MNG\Message\CancelShipmentRequest;
 use Omniship\MNG\Message\CancelShipmentResponse;
 
-use function Omniship\MNG\Tests\createMockHttpClient;
 use function Omniship\MNG\Tests\createMockRequestFactory;
 use function Omniship\MNG\Tests\createMockStreamFactory;
+use function Omniship\MNG\Tests\createSequencedMockHttpClient;
 
-function createCancelSuccessXml(): string
+function tokenSuccess(): array
 {
-    return '<?xml version="1.0" encoding="utf-8"?>'
-        . '<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">'
-        . '<soap:Body>'
-        . '<SiparisIptali_C2CResponse xmlns="http://tempuri.org/">'
-        . '<SiparisIptali_C2CResult>1</SiparisIptali_C2CResult>'
-        . '</SiparisIptali_C2CResponse>'
-        . '</soap:Body>'
-        . '</soap:Envelope>';
+    return [
+        'body' => json_encode(['jwt' => 'tok'], JSON_THROW_ON_ERROR),
+        'status' => 200,
+    ];
 }
 
-function createCancelFailureXml(): string
+function buildCancelRequest(array $responses, array &$captured = []): CancelShipmentRequest
 {
-    return '<?xml version="1.0" encoding="utf-8"?>'
-        . '<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">'
-        . '<soap:Body>'
-        . '<SiparisIptali_C2CResponse xmlns="http://tempuri.org/">'
-        . '<SiparisIptali_C2CResult>0</SiparisIptali_C2CResult>'
-        . '</SiparisIptali_C2CResponse>'
-        . '</soap:Body>'
-        . '</soap:Envelope>';
-}
-
-function createCancelRequest(string $responseXml): CancelShipmentRequest
-{
-    $request = new CancelShipmentRequest(
-        createMockHttpClient($responseXml),
+    return new CancelShipmentRequest(
+        createSequencedMockHttpClient($responses, $captured),
         createMockRequestFactory(),
         createMockStreamFactory(),
     );
-
-    return $request;
 }
 
-it('builds correct cancel data', function () {
-    $request = createCancelRequest(createCancelSuccessXml());
-    $request->initialize([
-        'username' => '1234567890',
-        'password' => 'ABCDEF123',
-        'orderNumber' => 'SIP-001',
-    ]);
+function defaultCancelParams(): array
+{
+    return [
+        'clientId' => 'cid',
+        'clientSecret' => 'csec',
+        'customerNumber' => 'cust',
+        'password' => 'pw',
+        'testMode' => true,
+        'referenceId' => 'siparis-001',
+    ];
+}
 
-    $data = $request->getData();
-
-    expect($data['pkullaniciAdi'])->toBe('1234567890')
-        ->and($data['pSifre'])->toBe('ABCDEF123')
-        ->and($data['pSiparisNo'])->toBe('SIP-001');
-});
-
-it('sends request and returns successful cancel', function () {
-    $request = createCancelRequest(createCancelSuccessXml());
-    $request->initialize([
-        'username' => '123',
-        'password' => 'abc',
-        'orderNumber' => 'SIP-001',
-    ]);
+it('issues PUT to /cancelorder with uppercased referenceId in path', function () {
+    $captured = [];
+    $request = buildCancelRequest(
+        [tokenSuccess(), ['body' => '"OK"', 'status' => 200]],
+        $captured,
+    );
+    $request->initialize(defaultCancelParams());
 
     $response = $request->send();
 
     expect($response)->toBeInstanceOf(CancelShipmentResponse::class)
         ->and($response->isSuccessful())->toBeTrue()
         ->and($response->isCancelled())->toBeTrue();
+
+    $cancelReq = $captured[1];
+
+    expect($cancelReq->getMethod())->toBe('PUT')
+        ->and($cancelReq->getUri()->getPath())->toEndWith('/cancelorder/SIPARIS-001')
+        ->and($cancelReq->getHeaderLine('Authorization'))->toBe('Bearer tok');
 });
 
-it('sends request and returns failed cancel', function () {
-    $request = createCancelRequest(createCancelFailureXml());
-    $request->initialize([
-        'username' => '123',
-        'password' => 'abc',
-        'orderNumber' => 'SIP-FAIL',
+it('marks failed cancel as not successful with status code as code', function () {
+    $request = buildCancelRequest([
+        tokenSuccess(),
+        ['body' => json_encode(['title' => 'Not Found']), 'status' => 404],
     ]);
+    $request->initialize(defaultCancelParams());
 
     $response = $request->send();
 
     expect($response->isSuccessful())->toBeFalse()
-        ->and($response->isCancelled())->toBeFalse();
+        ->and($response->isCancelled())->toBeFalse()
+        ->and($response->getCode())->toBe('404')
+        ->and($response->getMessage())->toBe('Not Found');
 });
 
-it('throws exception when order number is missing', function () {
-    $request = createCancelRequest(createCancelSuccessXml());
+it('throws when referenceId is missing', function () {
+    $request = buildCancelRequest([tokenSuccess(), ['body' => '"OK"', 'status' => 200]]);
     $request->initialize([
-        'username' => '123',
-        'password' => 'abc',
+        'clientId' => 'x',
+        'clientSecret' => 'x',
+        'customerNumber' => 'x',
+        'password' => 'x',
     ]);
 
     $request->getData();

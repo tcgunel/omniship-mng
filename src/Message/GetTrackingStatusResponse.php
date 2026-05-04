@@ -13,51 +13,49 @@ use Omniship\Common\TrackingInfo;
 class GetTrackingStatusResponse extends AbstractResponse implements TrackingResponse
 {
     /**
-     * MNG status code to ShipmentStatus mapping.
-     *
-     * 0 = Henüz işlem yapılmadı
-     * 1 = Sipariş Kargoya Verildi
-     * 2 = Transfer Aşamasında
-     * 3 = Gönderi Teslim Birimine Ulaştı
-     * 4 = Gönderi Teslimat Adresine Yönlendirildi
-     * 5 = Teslim Edildi
-     * 6 = [kod] Teslim Edilemedi
-     * 7 = Göndericiye Teslim Edildi
+     * MNG shipmentStatusCode mapping (per Standard Query swagger):
+     *   1 → Gönderi_Hazırlandı
+     *   2 → Transfer_Aşamasında
+     *   3 → Teslimat_Birimine_Ulaştı
+     *   4 → Alıcı_Adresine_Yönlendirildi
+     *   5 → Teslim_Edildi
+     *   6 → Teslim_Edilemedi
+     *   7 → Geri_Geliyor
+     *   8 → Destek_Gerekiyor
      */
     private const STATUS_MAP = [
-        0 => ShipmentStatus::PRE_TRANSIT,
-        1 => ShipmentStatus::PICKED_UP,
+        1 => ShipmentStatus::PRE_TRANSIT,
         2 => ShipmentStatus::IN_TRANSIT,
         3 => ShipmentStatus::IN_TRANSIT,
         4 => ShipmentStatus::OUT_FOR_DELIVERY,
         5 => ShipmentStatus::DELIVERED,
         6 => ShipmentStatus::FAILURE,
         7 => ShipmentStatus::RETURNED,
+        8 => ShipmentStatus::FAILURE,
     ];
 
     public function isSuccessful(): bool
     {
-        if (!is_array($this->data)) {
-            return false;
-        }
-
-        return ($this->data['Success'] ?? false) === true && $this->getShipment() !== null;
+        return $this->headlineStatus() !== null || $this->events() !== [];
     }
 
     public function getMessage(): ?string
     {
-        if (!is_array($this->data) || !isset($this->data['Message'])) {
-            return null;
+        $status = $this->headlineStatus();
+
+        if (is_array($status) && isset($status['shipmentStatus']) && is_string($status['shipmentStatus'])) {
+            return $status['shipmentStatus'];
         }
 
-        return (string) $this->data['Message'];
+        return null;
     }
 
     public function getCode(): ?string
     {
-        $shipment = $this->getShipment();
-        if ($shipment !== null && isset($shipment['SIPARIS_STATU'])) {
-            return (string) $shipment['SIPARIS_STATU'];
+        $status = $this->headlineStatus();
+
+        if (is_array($status) && isset($status['shipmentStatusCode'])) {
+            return (string) $status['shipmentStatusCode'];
         }
 
         return null;
@@ -65,71 +63,61 @@ class GetTrackingStatusResponse extends AbstractResponse implements TrackingResp
 
     public function getTrackingInfo(): TrackingInfo
     {
-        $trackingNumber = '';
-        $request = $this->getRequest();
-        if ($request instanceof GetTrackingStatusRequest) {
-            $trackingNumber = $request->getTrackingNumber() ?? '';
+        $reference = is_array($this->data) && isset($this->data['reference'])
+            ? (string) $this->data['reference']
+            : '';
+
+        $status = $this->headlineStatus();
+        $events = $this->events();
+
+        $trackingNumber = $reference;
+        if (is_array($status) && isset($status['shipmentId'])) {
+            $trackingNumber = (string) $status['shipmentId'];
         }
 
-        $shipment = $this->getShipment();
-
-        if ($shipment === null) {
-            return new TrackingInfo(
-                trackingNumber: $trackingNumber,
-                status: ShipmentStatus::UNKNOWN,
-                events: [],
-                carrier: 'MNG Kargo',
-            );
+        $statusEnum = ShipmentStatus::UNKNOWN;
+        if (is_array($status) && isset($status['shipmentStatusCode'])) {
+            $statusEnum = self::mapStatus((int) $status['shipmentStatusCode']);
         }
-
-        $statusCode = isset($shipment['SIPARIS_STATU']) ? (int) $shipment['SIPARIS_STATU'] : 0;
-        $status = self::mapStatus($statusCode);
-        $description = $shipment['SIPARIS_STATU_ACIKLAMA'] ?? $shipment['KARGO_SON_HAREKET'] ?? '';
-
-        $occurredAt = $this->parseDate($shipment['SIPARIS_STATU_TARIHI'] ?? null)
-            ?? $this->parseDate($shipment['TESLIM_TARIHI'] ?? null)
-            ?? new \DateTimeImmutable();
 
         $signedBy = null;
-        if ($status === ShipmentStatus::DELIVERED && isset($shipment['TESLIM_ALAN_ADSOYAD'])) {
-            $signedBy = trim($shipment['TESLIM_ALAN_ADSOYAD']);
-            if ($signedBy === '') {
-                $signedBy = null;
-            }
+        if (
+            is_array($status)
+            && ($status['isDelivered'] ?? null) === 1
+            && isset($status['deliveryTo'])
+        ) {
+            $deliveryTo = trim((string) $status['deliveryTo']);
+            $signedBy = $deliveryTo !== '' ? $deliveryTo : null;
         }
 
-        $event = new TrackingEvent(
-            status: $status,
-            description: $description,
-            occurredAt: $occurredAt,
-        );
-
-        $gonderiNo = $shipment['GONDERI_NO'] ?? null;
-        $trackingUrl = $shipment['KARGO_TAKIP_URL'] ?? null;
+        $trackingEvents = [];
+        foreach ($events as $event) {
+            if (!is_array($event)) {
+                continue;
+            }
+            $trackingEvents[] = $this->buildEvent($event);
+        }
 
         return new TrackingInfo(
-            trackingNumber: $gonderiNo ?? $shipment['SIPARIS_KODU'] ?? $trackingNumber,
-            status: $status,
-            events: [$event],
+            trackingNumber: $trackingNumber,
+            status: $statusEnum,
+            events: $trackingEvents,
             carrier: 'MNG Kargo',
             signedBy: $signedBy,
         );
     }
 
-    /**
-     * Get the tracking URL from the response.
-     */
     public function getTrackingUrl(): ?string
     {
-        $shipment = $this->getShipment();
+        $status = $this->headlineStatus();
 
-        if ($shipment === null || !isset($shipment['KARGO_TAKIP_URL'])) {
-            return null;
+        if (is_array($status) && isset($status['trackingUrl']) && is_string($status['trackingUrl'])) {
+            $url = trim($status['trackingUrl']);
+
+            return $url !== '' ? $url : null;
         }
 
-        $url = trim($shipment['KARGO_TAKIP_URL']);
-
-        return $url !== '' ? $url : null;
+        return null;
     }
 
     public static function mapStatus(int $code): ShipmentStatus
@@ -138,44 +126,101 @@ class GetTrackingStatusResponse extends AbstractResponse implements TrackingResp
     }
 
     /**
-     * @return array<string, string>|null
+     * @param array<string, mixed> $event
      */
-    private function getShipment(): ?array
+    private function buildEvent(array $event): TrackingEvent
     {
-        if (!is_array($this->data) || !isset($this->data['Shipment'])) {
-            return null;
-        }
+        $statusName = is_string($event['eventStatus'] ?? null) ? (string) $event['eventStatus'] : '';
+        $description = is_string($event['eventStatusEn'] ?? null) ? (string) $event['eventStatusEn'] : $statusName;
 
-        if (!is_array($this->data['Shipment'])) {
-            return null;
-        }
+        $occurredAt = $this->parseDate($event['eventDateTime2'] ?? null)
+            ?? $this->parseDate($event['eventDateTime'] ?? null)
+            ?? new \DateTimeImmutable();
 
-        /** @var array<string, string> */
-        return $this->data['Shipment'];
+        $location = is_string($event['location'] ?? null) ? (string) $event['location'] : null;
+        $city = is_string($event['locationAddress'] ?? null) ? (string) $event['locationAddress'] : null;
+        $country = is_string($event['country'] ?? null) ? (string) $event['country'] : null;
+
+        return new TrackingEvent(
+            status: $this->statusFromEventName($statusName),
+            description: $description,
+            occurredAt: $occurredAt,
+            location: $location,
+            city: $city,
+            country: $country,
+        );
     }
 
-    private function parseDate(?string $dateStr): ?\DateTimeImmutable
+    private function statusFromEventName(string $name): ShipmentStatus
     {
-        if ($dateStr === null || $dateStr === '') {
+        $normalized = mb_strtolower($name, 'UTF-8');
+
+        return match (true) {
+            str_contains($normalized, 'hazırlandı') || str_contains($normalized, 'created') => ShipmentStatus::PRE_TRANSIT,
+            str_contains($normalized, 'transit') || str_contains($normalized, 'transfer') => ShipmentStatus::IN_TRANSIT,
+            str_contains($normalized, 'yönlendirildi') || str_contains($normalized, 'delivery') => ShipmentStatus::OUT_FOR_DELIVERY,
+            str_contains($normalized, 'teslim_edildi') || str_contains($normalized, 'teslim edildi') || str_contains($normalized, 'delivered') => ShipmentStatus::DELIVERED,
+            str_contains($normalized, 'iade') || str_contains($normalized, 'geri') || str_contains($normalized, 'returned') => ShipmentStatus::RETURNED,
+            str_contains($normalized, 'edilemedi') || str_contains($normalized, 'fail') => ShipmentStatus::FAILURE,
+            default => ShipmentStatus::UNKNOWN,
+        };
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    private function headlineStatus(): ?array
+    {
+        if (!is_array($this->data) || !isset($this->data['status'])) {
             return null;
         }
 
-        // Try ISO 8601 format: 2015-03-25T00:00:00+02:00
-        $date = \DateTimeImmutable::createFromFormat(\DateTimeInterface::ATOM, $dateStr);
-        if ($date !== false) {
-            return $date;
+        return is_array($this->data['status']) ? $this->data['status'] : null;
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    private function events(): array
+    {
+        if (!is_array($this->data) || !isset($this->data['events'])) {
+            return [];
         }
 
-        // Try Turkish date format: 16.02.2015 16:28:37
-        $date = \DateTimeImmutable::createFromFormat('d.m.Y H:i:s', $dateStr);
-        if ($date !== false) {
-            return $date;
+        if (!is_array($this->data['events'])) {
+            return [];
         }
 
-        // Try ISO without timezone
-        $date = \DateTimeImmutable::createFromFormat('Y-m-d\TH:i:s', $dateStr);
-        if ($date !== false) {
-            return $date;
+        $out = [];
+        foreach ($this->data['events'] as $entry) {
+            if (is_array($entry)) {
+                $out[] = $entry;
+            }
+        }
+
+        return $out;
+    }
+
+    private function parseDate(mixed $value): ?\DateTimeImmutable
+    {
+        if (!is_string($value) || $value === '') {
+            return null;
+        }
+
+        // Standard Query gives both formats. Prefer the ISO-style one.
+        $formats = [
+            'Y-m-d H:i:s',         // eventDateTime2
+            'd-m-Y H:i:s',         // eventDateTime
+            'd-m-Y H:i',           // shipmentStatus deliveryDateTime
+            'd-m-Y',               // estimatedDeliveryDate
+            \DateTimeInterface::ATOM,
+        ];
+
+        foreach ($formats as $format) {
+            $dt = \DateTimeImmutable::createFromFormat($format, $value);
+            if ($dt !== false) {
+                return $dt;
+            }
         }
 
         return null;

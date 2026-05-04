@@ -5,26 +5,58 @@ declare(strict_types=1);
 namespace Omniship\MNG\Message;
 
 use Omniship\Common\Enum\PaymentType;
+use Omniship\Common\Exception\HttpException;
 use Omniship\Common\Message\AbstractHttpRequest;
+use Omniship\Common\Message\ResponseInterface;
 
 abstract class AbstractMngRequest extends AbstractHttpRequest
 {
-    private const SOAP_URL_TEST = 'https://service.mngkargo.com.tr/tservis/musterisiparisnew.asmx';
-    private const SOAP_URL_PRODUCTION = 'https://service.mngkargo.com.tr/musterikargosiparis/musterisiparisnew.asmx';
+    private const BASE_URL_TEST = 'https://testapi.mngkargo.com.tr';
+    private const BASE_URL_PRODUCTION = 'https://api.mngkargo.com.tr';
+    private const TOKEN_PATH = '/mngapi/api/token';
 
-    public function getUsername(): ?string
+    abstract protected function getEndpoint(): string;
+
+    abstract protected function getHttpMethod(): string;
+
+    /**
+     * @param array<string, mixed> $data
+     */
+    abstract protected function createResponse(mixed $data): ResponseInterface;
+
+    public function getClientId(): string
     {
-        return $this->getParameter('username');
+        return (string) $this->getParameter('clientId');
     }
 
-    public function setUsername(string $username): static
+    public function setClientId(string $clientId): static
     {
-        return $this->setParameter('username', $username);
+        return $this->setParameter('clientId', $clientId);
     }
 
-    public function getPassword(): ?string
+    public function getClientSecret(): string
     {
-        return $this->getParameter('password');
+        return (string) $this->getParameter('clientSecret');
+    }
+
+    public function setClientSecret(string $clientSecret): static
+    {
+        return $this->setParameter('clientSecret', $clientSecret);
+    }
+
+    public function getCustomerNumber(): string
+    {
+        return (string) $this->getParameter('customerNumber');
+    }
+
+    public function setCustomerNumber(string $customerNumber): static
+    {
+        return $this->setParameter('customerNumber', $customerNumber);
+    }
+
+    public function getPassword(): string
+    {
+        return (string) $this->getParameter('password');
     }
 
     public function setPassword(string $password): static
@@ -32,34 +64,14 @@ abstract class AbstractMngRequest extends AbstractHttpRequest
         return $this->setParameter('password', $password);
     }
 
-    public function getOrderNumber(): ?string
+    public function getIdentityType(): int
     {
-        return $this->getParameter('orderNumber');
+        return (int) ($this->getParameter('identityType') ?? 1);
     }
 
-    public function setOrderNumber(string $orderNumber): static
+    public function setIdentityType(int $identityType): static
     {
-        return $this->setParameter('orderNumber', $orderNumber);
-    }
-
-    public function getBarcodeText(): ?string
-    {
-        return $this->getParameter('barcodeText');
-    }
-
-    public function setBarcodeText(string $barcodeText): static
-    {
-        return $this->setParameter('barcodeText', $barcodeText);
-    }
-
-    public function getInvoiceNumber(): ?string
-    {
-        return $this->getParameter('invoiceNumber');
-    }
-
-    public function setInvoiceNumber(string $invoiceNumber): static
-    {
-        return $this->setParameter('invoiceNumber', $invoiceNumber);
+        return $this->setParameter('identityType', $identityType);
     }
 
     public function getPaymentType(): ?PaymentType
@@ -82,9 +94,9 @@ abstract class AbstractMngRequest extends AbstractHttpRequest
         return $this->setParameter('cashOnDelivery', $cashOnDelivery);
     }
 
-    public function getCodAmount(): ?float
+    public function getCodAmount(): float
     {
-        return $this->getParameter('codAmount');
+        return (float) ($this->getParameter('codAmount') ?? 0.0);
     }
 
     public function setCodAmount(float $codAmount): static
@@ -92,165 +104,281 @@ abstract class AbstractMngRequest extends AbstractHttpRequest
         return $this->setParameter('codAmount', $codAmount);
     }
 
-    public function getSendSmsToSender(): bool
+    public function getReferenceId(): ?string
     {
-        return (bool) ($this->getParameter('sendSmsToSender') ?? false);
+        return $this->getParameter('referenceId');
     }
 
-    public function setSendSmsToSender(bool $sendSms): static
+    public function setReferenceId(string $referenceId): static
     {
-        return $this->setParameter('sendSmsToSender', $sendSms);
+        return $this->setParameter('referenceId', $referenceId);
     }
 
-    public function getSendSmsToReceiver(): bool
+    public function getInvoiceNumber(): ?string
     {
-        return (bool) ($this->getParameter('sendSmsToReceiver') ?? false);
+        return $this->getParameter('invoiceNumber');
     }
 
-    public function setSendSmsToReceiver(bool $sendSms): static
+    public function setInvoiceNumber(string $invoiceNumber): static
     {
-        return $this->setParameter('sendSmsToReceiver', $sendSms);
+        return $this->setParameter('invoiceNumber', $invoiceNumber);
     }
 
-    public function getSenderMngCustomerNo(): ?string
+    public function getRecipientCityCode(): ?int
     {
-        return $this->getParameter('senderMngCustomerNo');
+        $value = $this->getParameter('recipientCityCode');
+
+        return $value === null ? null : (int) $value;
     }
 
-    public function setSenderMngCustomerNo(string $value): static
+    public function setRecipientCityCode(int $code): static
     {
-        return $this->setParameter('senderMngCustomerNo', $value);
+        return $this->setParameter('recipientCityCode', $code);
     }
 
-    public function getSenderDealerNo(): ?string
+    public function getRecipientDistrictCode(): ?int
     {
-        return $this->getParameter('senderDealerNo');
+        $value = $this->getParameter('recipientDistrictCode');
+
+        return $value === null ? null : (int) $value;
     }
 
-    public function setSenderDealerNo(string $value): static
+    public function setRecipientDistrictCode(int $code): static
     {
-        return $this->setParameter('senderDealerNo', $value);
+        return $this->setParameter('recipientDistrictCode', $code);
     }
 
-    public function getSenderSemt(): ?string
+    public function getShipmentServiceType(): int
     {
-        return $this->getParameter('senderSemt');
+        return (int) ($this->getParameter('shipmentServiceType') ?? 1);
     }
 
-    public function setSenderSemt(string $value): static
+    public function setShipmentServiceType(int $type): static
     {
-        return $this->setParameter('senderSemt', $value);
+        return $this->setParameter('shipmentServiceType', $type);
     }
 
-    public function getSenderMahalle(): ?string
+    public function getPackagingType(): int
     {
-        return $this->getParameter('senderMahalle');
+        return (int) ($this->getParameter('packagingType') ?? 3);
     }
 
-    public function setSenderMahalle(string $value): static
+    public function setPackagingType(int $type): static
     {
-        return $this->setParameter('senderMahalle', $value);
+        return $this->setParameter('packagingType', $type);
     }
 
-    public function getSenderWorkPhone(): ?string
+    public function getDeliveryType(): int
     {
-        return $this->getParameter('senderWorkPhone');
+        return (int) ($this->getParameter('deliveryType') ?? 1);
     }
 
-    public function setSenderWorkPhone(string $value): static
+    public function setDeliveryType(int $type): static
     {
-        return $this->setParameter('senderWorkPhone', $value);
+        return $this->setParameter('deliveryType', $type);
     }
 
-    public function getSenderFax(): ?string
+    public function getContent(): string
     {
-        return $this->getParameter('senderFax');
+        return (string) ($this->getParameter('content') ?? '');
     }
 
-    public function setSenderFax(string $value): static
+    public function setContent(string $content): static
     {
-        return $this->setParameter('senderFax', $value);
+        return $this->setParameter('content', $content);
     }
 
-    protected function getSoapUrl(): string
+    public function getDescription(): string
     {
-        return $this->getTestMode() ? self::SOAP_URL_TEST : self::SOAP_URL_PRODUCTION;
+        return (string) ($this->getParameter('description') ?? '');
+    }
+
+    public function setDescription(string $description): static
+    {
+        return $this->setParameter('description', $description);
+    }
+
+    public function getBillOfLandingId(): ?string
+    {
+        return $this->getParameter('billOfLandingId');
+    }
+
+    public function setBillOfLandingId(string $value): static
+    {
+        return $this->setParameter('billOfLandingId', $value);
+    }
+
+    public function getMarketPlaceShortCode(): string
+    {
+        return (string) ($this->getParameter('marketPlaceShortCode') ?? '');
+    }
+
+    public function setMarketPlaceShortCode(string $code): static
+    {
+        return $this->setParameter('marketPlaceShortCode', $code);
+    }
+
+    public function getMarketPlaceSaleCode(): string
+    {
+        return (string) ($this->getParameter('marketPlaceSaleCode') ?? '');
+    }
+
+    public function setMarketPlaceSaleCode(string $code): static
+    {
+        return $this->setParameter('marketPlaceSaleCode', $code);
+    }
+
+    public function getSendSmsRecipientArrival(): bool
+    {
+        return (bool) ($this->getParameter('sendSmsRecipientArrival') ?? false);
+    }
+
+    public function setSendSmsRecipientArrival(bool $value): static
+    {
+        return $this->setParameter('sendSmsRecipientArrival', $value);
+    }
+
+    public function getSendSmsRecipientPrepared(): bool
+    {
+        return (bool) ($this->getParameter('sendSmsRecipientPrepared') ?? false);
+    }
+
+    public function setSendSmsRecipientPrepared(bool $value): static
+    {
+        return $this->setParameter('sendSmsRecipientPrepared', $value);
+    }
+
+    public function getSendSmsShipperDelivered(): bool
+    {
+        return (bool) ($this->getParameter('sendSmsShipperDelivered') ?? false);
+    }
+
+    public function setSendSmsShipperDelivered(bool $value): static
+    {
+        return $this->setParameter('sendSmsShipperDelivered', $value);
     }
 
     /**
-     * Build a complete SOAP envelope wrapping the given body XML.
+     * Whether this request needs a JWT (Identity API). CBS Info endpoints
+     * don't require it; everything else does.
      */
-    protected function buildSoapEnvelope(string $bodyXml): string
+    protected function requiresJwt(): bool
     {
-        return '<?xml version="1.0" encoding="utf-8"?>'
-            . '<soap:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"'
-            . ' xmlns:xsd="http://www.w3.org/2001/XMLSchema"'
-            . ' xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">'
-            . '<soap:Body>'
-            . $bodyXml
-            . '</soap:Body>'
-            . '</soap:Envelope>';
+        return true;
+    }
+
+    protected function getBaseUrl(): string
+    {
+        return $this->getTestMode() ? self::BASE_URL_TEST : self::BASE_URL_PRODUCTION;
     }
 
     /**
-     * Send a SOAP request to the MNG ASMX endpoint.
-     *
-     * @return \SimpleXMLElement The parsed SOAP body content
+     * @param array<string, mixed> $data
      */
-    protected function sendSoapRequest(string $soapAction, string $soapBody): \SimpleXMLElement
+    public function sendData(array $data): ResponseInterface
     {
-        $envelope = $this->buildSoapEnvelope($soapBody);
+        $url = $this->getBaseUrl() . $this->getEndpoint();
+        $method = $this->getHttpMethod();
+
+        $headers = [
+            'X-IBM-Client-Id' => $this->getClientId(),
+            'X-IBM-Client-Secret' => $this->getClientSecret(),
+            'Accept' => 'application/json',
+        ];
+
+        if ($this->requiresJwt()) {
+            $headers['Authorization'] = 'Bearer ' . $this->fetchJwt();
+        }
+
+        $body = null;
+
+        if ($method !== 'GET' && $data !== []) {
+            $headers['Content-Type'] = 'application/json';
+            $body = json_encode($data, JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+        }
+
+        $response = $this->sendHttpRequest(
+            method: $method,
+            url: $url,
+            headers: $headers,
+            body: $body,
+        );
+
+        $responseBody = (string) $response->getBody();
+        $statusCode = $response->getStatusCode();
+
+        $decoded = $responseBody === ''
+            ? null
+            : json_decode($responseBody, true, 512, JSON_THROW_ON_ERROR);
+
+        if ($statusCode >= 400 && !is_array($decoded)) {
+            throw new HttpException(
+                "MNG API request to {$url} failed with HTTP {$statusCode}: {$responseBody}",
+            );
+        }
+
+        return $this->response = $this->createResponse([
+            'status' => $statusCode,
+            'body' => $decoded,
+        ]);
+    }
+
+    protected function fetchJwt(): string
+    {
+        $url = $this->getBaseUrl() . self::TOKEN_PATH;
+
+        $body = json_encode([
+            'customerNumber' => $this->getCustomerNumber(),
+            'password' => $this->getPassword(),
+            'identityType' => $this->getIdentityType(),
+        ], JSON_THROW_ON_ERROR);
 
         $response = $this->sendHttpRequest(
             method: 'POST',
-            url: $this->getSoapUrl(),
+            url: $url,
             headers: [
-                'Content-Type' => 'text/xml; charset=utf-8',
-                'SOAPAction' => 'http://tempuri.org/' . $soapAction,
+                'X-IBM-Client-Id' => $this->getClientId(),
+                'X-IBM-Client-Secret' => $this->getClientSecret(),
+                'Content-Type' => 'application/json',
+                'Accept' => 'application/json',
             ],
-            body: $envelope,
+            body: $body,
         );
 
-        $xml = (string) $response->getBody();
+        $responseBody = (string) $response->getBody();
+        $statusCode = $response->getStatusCode();
 
-        return $this->parseSoapResponse($xml);
-    }
-
-    /**
-     * Parse a SOAP response XML string and return the body content.
-     */
-    protected function parseSoapResponse(string $xml): \SimpleXMLElement
-    {
-        $doc = new \SimpleXMLElement($xml);
-        $doc->registerXPathNamespace('soap', 'http://schemas.xmlsoap.org/soap/envelope/');
-        $doc->registerXPathNamespace('tns', 'http://tempuri.org/');
-
-        $body = $doc->xpath('//soap:Body');
-
-        if ($body === false || !isset($body[0])) {
-            return $doc;
+        if ($statusCode !== 200) {
+            throw new HttpException(
+                "MNG Identity API failed with HTTP {$statusCode}: {$responseBody}",
+            );
         }
 
-        return $body[0];
+        /** @var array{jwt?: string} $decoded */
+        $decoded = json_decode($responseBody, true, 512, JSON_THROW_ON_ERROR);
+
+        if (!is_string($decoded['jwt'] ?? null) || $decoded['jwt'] === '') {
+            throw new HttpException("MNG Identity API returned no JWT: {$responseBody}");
+        }
+
+        return $decoded['jwt'];
     }
 
     /**
-     * Escape a string for safe XML content.
+     * Map Omniship PaymentType to MNG numeric paymentType.
+     * 1=GONDERICI_ODER, 2=ALICI_ODER, 3=PLATFORM_ODER (PLATFORM not valid for createOrder).
      */
-    protected function xmlEscape(string $value): string
-    {
-        return htmlspecialchars($value, ENT_XML1 | ENT_QUOTES, 'UTF-8');
-    }
-
-    /**
-     * Map Omniship PaymentType to MNG payment type string.
-     */
-    protected function mapPaymentType(?PaymentType $paymentType): string
+    protected function mapPaymentType(?PaymentType $paymentType): int
     {
         return match ($paymentType) {
-            PaymentType::RECEIVER => 'Alici_Odeyecek',
-            PaymentType::THIRD_PARTY => 'Platform_Odeyecek',
-            default => 'Gonderici_Odeyecek',
+            PaymentType::RECEIVER => 2,
+            PaymentType::THIRD_PARTY => 3,
+            default => 1,
         };
+    }
+
+    protected function normalizeReference(string $value): string
+    {
+        return mb_strtoupper($value, 'UTF-8');
     }
 }

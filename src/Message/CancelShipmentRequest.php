@@ -6,68 +6,38 @@ namespace Omniship\MNG\Message;
 
 use Omniship\Common\Message\ResponseInterface;
 
+/**
+ * PUT /standardcmdapi/cancelorder/{referenceId}
+ * Empty request body; the reference is sent as a path parameter.
+ */
 class CancelShipmentRequest extends AbstractMngRequest
 {
+    private const PATH_PREFIX = '/mngapi/api/standardcmdapi/cancelorder/';
+
+    protected function getEndpoint(): string
+    {
+        $referenceId = $this->normalizeReference((string) $this->getReferenceId());
+
+        return self::PATH_PREFIX . rawurlencode($referenceId);
+    }
+
+    protected function getHttpMethod(): string
+    {
+        return 'PUT';
+    }
+
     /**
      * @return array<string, mixed>
      */
     public function getData(): array
     {
-        $this->validate('username', 'password', 'orderNumber');
+        $this->validate('clientId', 'clientSecret', 'customerNumber', 'password', 'referenceId');
 
-        return [
-            'pkullaniciAdi' => $this->getUsername() ?? '',
-            'pSifre' => $this->getPassword() ?? '',
-            'pSiparisNo' => $this->getOrderNumber() ?? '',
-        ];
+        return [];
     }
 
-    /**
-     * @param array<string, mixed> $data
-     */
-    public function sendData(array $data): ResponseInterface
+    protected function createResponse(mixed $data): ResponseInterface
     {
-        $soapBody = $this->buildCancelXml($data);
-        $body = $this->sendSoapRequest('SiparisIptali_C2C', $soapBody);
-
-        $parsed = $this->parseResponse($body);
-
-        return $this->response = new CancelShipmentResponse($this, $parsed);
-    }
-
-    /**
-     * @param array<string, mixed> $data
-     */
-    private function buildCancelXml(array $data): string
-    {
-        return '<SiparisIptali_C2C xmlns="http://tempuri.org/">'
-            . '<pkullaniciAdi>' . $this->xmlEscape((string) $data['pkullaniciAdi']) . '</pkullaniciAdi>'
-            . '<pSifre>' . $this->xmlEscape((string) $data['pSifre']) . '</pSifre>'
-            . '<pSiparisNo>' . $this->xmlEscape((string) $data['pSiparisNo']) . '</pSiparisNo>'
-            . '</SiparisIptali_C2C>';
-    }
-
-    /**
-     * @return array<string, string>
-     */
-    private function parseResponse(\SimpleXMLElement $body): array
-    {
-        $body->registerXPathNamespace('tns', 'http://tempuri.org/');
-
-        $resultNodes = $body->xpath('.//tns:SiparisIptali_C2CResult');
-
-        if ($resultNodes === false || !isset($resultNodes[0])) {
-            return [
-                'Result' => '0',
-                'Message' => 'Unable to parse response',
-            ];
-        }
-
-        $result = (string) $resultNodes[0];
-
-        return [
-            'Result' => $result,
-            'Message' => $result === '1' ? 'Başarılı' : $result,
-        ];
+        return new CancelShipmentResponse($this, $data);
     }
 }

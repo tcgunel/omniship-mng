@@ -2,128 +2,88 @@
 
 declare(strict_types=1);
 
+use Omniship\Common\Enum\ShipmentStatus;
 use Omniship\MNG\Message\GetTrackingStatusRequest;
 use Omniship\MNG\Message\GetTrackingStatusResponse;
 
-use function Omniship\MNG\Tests\createMockHttpClient;
 use function Omniship\MNG\Tests\createMockRequestFactory;
 use function Omniship\MNG\Tests\createMockStreamFactory;
+use function Omniship\MNG\Tests\createSequencedMockHttpClient;
 
-function createTrackingSuccessXml(int $status = 5, string $statusDescription = 'Teslim Edildi'): string
+function trackingTokenResponse(): array
 {
-    return '<?xml version="1.0" encoding="utf-8"?>'
-        . '<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">'
-        . '<soap:Body>'
-        . '<GelecekIadeSiparisKontrolResponse xmlns="http://tempuri.org/">'
-        . '<GelecekIadeSiparisKontrolResult>'
-        . '<xs:schema id="NewDataSet" xmlns="" xmlns:xs="http://www.w3.org/2001/XMLSchema" xmlns:msdata="urn:schemas-microsoft-com:xml-msdata">'
-        . '<xs:element name="NewDataSet" msdata:IsDataSet="true"></xs:element>'
-        . '</xs:schema>'
-        . '<diffgr:diffgram xmlns:msdata="urn:schemas-microsoft-com:xml-msdata" xmlns:diffgr="urn:schemas-microsoft-com:xml-diffgram-v1">'
-        . '<NewDataSet xmlns="">'
-        . '<Table1 diffgr:id="Table11" msdata:rowOrder="0">'
-        . '<SIPARIS_KAYIT_TARIHI>2025-03-10T00:00:00+03:00</SIPARIS_KAYIT_TARIHI>'
-        . '<SIPARIS_KODU>SIP-001</SIPARIS_KODU>'
-        . '<GONDERICI_MUSTERI>TEST MÜŞTERI</GONDERICI_MUSTERI>'
-        . '<GONDERI_NO>89472001590</GONDERI_NO>'
-        . '<SIPARIS_STATU>' . $status . '</SIPARIS_STATU>'
-        . '<SIPARIS_STATU_ACIKLAMA>' . $statusDescription . '</SIPARIS_STATU_ACIKLAMA>'
-        . '<KARGO_TAKIP_URL>http://service.mngkargo.com.tr/biactive/takip222.asp?a=g&amp;b=FV&amp;c=925515</KARGO_TAKIP_URL>'
-        . '<SIPARIS_STATU_TARIHI>10.03.2025 14:30:00</SIPARIS_STATU_TARIHI>'
-        . '</Table1>'
-        . '</NewDataSet>'
-        . '</diffgr:diffgram>'
-        . '</GelecekIadeSiparisKontrolResult>'
-        . '</GelecekIadeSiparisKontrolResponse>'
-        . '</soap:Body>'
-        . '</soap:Envelope>';
+    return ['body' => json_encode(['jwt' => 'tok'], JSON_THROW_ON_ERROR), 'status' => 200];
 }
 
-function createTrackingDeliveredXml(): string
+function eventsResponse(): array
 {
-    return '<?xml version="1.0" encoding="utf-8"?>'
-        . '<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">'
-        . '<soap:Body>'
-        . '<GelecekIadeSiparisKontrolResponse xmlns="http://tempuri.org/">'
-        . '<GelecekIadeSiparisKontrolResult>'
-        . '<xs:schema id="NewDataSet" xmlns="" xmlns:xs="http://www.w3.org/2001/XMLSchema" xmlns:msdata="urn:schemas-microsoft-com:xml-msdata">'
-        . '<xs:element name="NewDataSet" msdata:IsDataSet="true"></xs:element>'
-        . '</xs:schema>'
-        . '<diffgr:diffgram xmlns:msdata="urn:schemas-microsoft-com:xml-msdata" xmlns:diffgr="urn:schemas-microsoft-com:xml-diffgram-v1">'
-        . '<NewDataSet xmlns="">'
-        . '<Table1 diffgr:id="Table11" msdata:rowOrder="0">'
-        . '<SIPARIS_KAYIT_TARIHI>2025-03-10T00:00:00+03:00</SIPARIS_KAYIT_TARIHI>'
-        . '<SIPARIS_KODU>SIP-001</SIPARIS_KODU>'
-        . '<GONDERICI_MUSTERI>TEST MÜŞTERI</GONDERICI_MUSTERI>'
-        . '<GONDERI_NO>89472001590</GONDERI_NO>'
-        . '<TESLIM_TARIHI>2025-03-12T00:00:00+03:00</TESLIM_TARIHI>'
-        . '<TESLIM_ALAN_ADSOYAD>MEHMET DEMİR</TESLIM_ALAN_ADSOYAD>'
-        . '<KARGO_SON_HAREKET>ALICIYA TESLİM EDİLDİ (12/03/2025)</KARGO_SON_HAREKET>'
-        . '<SIPARIS_STATU>5</SIPARIS_STATU>'
-        . '<SIPARIS_STATU_ACIKLAMA>Teslim Edildi</SIPARIS_STATU_ACIKLAMA>'
-        . '<KARGO_TAKIP_URL>http://service.mngkargo.com.tr/biactive/takip222.asp?a=g&amp;b=FV&amp;c=925515</KARGO_TAKIP_URL>'
-        . '<SIPARIS_STATU_TARIHI>12.03.2025 16:28:37</SIPARIS_STATU_TARIHI>'
-        . '</Table1>'
-        . '</NewDataSet>'
-        . '</diffgr:diffgram>'
-        . '</GelecekIadeSiparisKontrolResult>'
-        . '</GelecekIadeSiparisKontrolResponse>'
-        . '</soap:Body>'
-        . '</soap:Envelope>';
+    $events = [
+        [
+            'referenceId' => 'SIPARIS-001',
+            'eventSequence' => '1',
+            'eventStatus' => 'Gönderi Hazırlandı',
+            'eventStatusEn' => 'Shipment Created',
+            'eventDateTime' => '12-02-2019 20:30:45',
+            'eventDateTime2' => '2019-02-12 20:30:45',
+            'location' => 'Atalar Şube',
+            'country' => 'TR',
+            'locationAddress' => 'İSTANBUL',
+        ],
+        [
+            'referenceId' => 'SIPARIS-001',
+            'eventSequence' => '2',
+            'eventStatus' => 'Teslim Edildi',
+            'eventStatusEn' => 'Delivered',
+            'eventDateTime' => '13-02-2019 14:56:00',
+            'eventDateTime2' => '2019-02-13 14:56:00',
+            'location' => 'Adana Şube',
+            'country' => 'TR',
+            'locationAddress' => 'ADANA',
+        ],
+    ];
+
+    return ['body' => json_encode($events, JSON_THROW_ON_ERROR), 'status' => 200];
 }
 
-function createTrackingEmptyXml(): string
+function statusResponse(): array
 {
-    return '<?xml version="1.0" encoding="utf-8"?>'
-        . '<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">'
-        . '<soap:Body>'
-        . '<GelecekIadeSiparisKontrolResponse xmlns="http://tempuri.org/">'
-        . '<GelecekIadeSiparisKontrolResult>'
-        . '<xs:schema id="NewDataSet" xmlns="" xmlns:xs="http://www.w3.org/2001/XMLSchema" xmlns:msdata="urn:schemas-microsoft-com:xml-msdata">'
-        . '<xs:element name="NewDataSet" msdata:IsDataSet="true"></xs:element>'
-        . '</xs:schema>'
-        . '<diffgr:diffgram xmlns:msdata="urn:schemas-microsoft-com:xml-msdata" xmlns:diffgr="urn:schemas-microsoft-com:xml-diffgram-v1" />'
-        . '</GelecekIadeSiparisKontrolResult>'
-        . '</GelecekIadeSiparisKontrolResponse>'
-        . '</soap:Body>'
-        . '</soap:Envelope>';
+    return [
+        'body' => json_encode([
+            'shipmentStatusCode' => 5,
+            'orderId' => '54321',
+            'referenceId' => 'SIPARIS-001',
+            'shipmentId' => '14556546',
+            'shipmentStatus' => 'Teslim_Edildi',
+            'isDelivered' => 1,
+            'deliveryTo' => 'Sema Kudu',
+            'trackingUrl' => 'https://www.mngkargo.com.tr/track/14556546',
+        ], JSON_THROW_ON_ERROR),
+        'status' => 200,
+    ];
 }
 
-function createTrackingRequest(string $responseXml): GetTrackingStatusRequest
+function buildTrackingRequest(array $responses, array &$captured = []): GetTrackingStatusRequest
 {
-    $request = new GetTrackingStatusRequest(
-        createMockHttpClient($responseXml),
+    return new GetTrackingStatusRequest(
+        createSequencedMockHttpClient($responses, $captured),
         createMockRequestFactory(),
         createMockStreamFactory(),
     );
-
-    return $request;
 }
 
-it('builds correct tracking data', function () {
-    $request = createTrackingRequest(createTrackingSuccessXml());
+it('combines events + headline status into TrackingInfo', function () {
+    $captured = [];
+    $request = buildTrackingRequest(
+        [trackingTokenResponse(), eventsResponse(), trackingTokenResponse(), statusResponse()],
+        $captured,
+    );
     $request->initialize([
-        'username' => '123',
-        'password' => 'abc',
-        'trackingNumber' => 'SIP-001',
-    ]);
-
-    $data = $request->getData();
-
-    expect($data['pRfSipGnMusteriNo'])->toBe('123')
-        ->and($data['pRfSipGnMusteriSifre'])->toBe('abc')
-        ->and($data['pCHSiparisNo'])->toBe('SIP-001')
-        ->and($data['pCHBarkod'])->toBe('')
-        ->and($data['pCHFaturaSeri'])->toBe('')
-        ->and($data['pCHFaturaNo'])->toBe('');
-});
-
-it('sends request and returns delivered response', function () {
-    $request = createTrackingRequest(createTrackingDeliveredXml());
-    $request->initialize([
-        'username' => '123',
-        'password' => 'abc',
-        'trackingNumber' => 'SIP-001',
+        'clientId' => 'cid',
+        'clientSecret' => 'csec',
+        'customerNumber' => 'cust',
+        'password' => 'pw',
+        'testMode' => true,
+        'referenceId' => 'siparis-001',
     ]);
 
     $response = $request->send();
@@ -133,54 +93,78 @@ it('sends request and returns delivered response', function () {
 
     $info = $response->getTrackingInfo();
 
-    expect($info->trackingNumber)->toBe('89472001590')
-        ->and($info->status)->toBe(\Omniship\Common\Enum\ShipmentStatus::DELIVERED)
-        ->and($info->carrier)->toBe('MNG Kargo')
-        ->and($info->signedBy)->toBe('MEHMET DEMİR')
-        ->and($info->events)->toHaveCount(1)
-        ->and($info->events[0]->description)->toBe('Teslim Edildi');
+    expect($info->trackingNumber)->toBe('14556546')
+        ->and($info->status)->toBe(ShipmentStatus::DELIVERED)
+        ->and($info->signedBy)->toBe('Sema Kudu')
+        ->and($info->events)->toHaveCount(2)
+        ->and($info->events[0]->status)->toBe(ShipmentStatus::PRE_TRANSIT)
+        ->and($info->events[0]->description)->toBe('Shipment Created')
+        ->and($info->events[1]->status)->toBe(ShipmentStatus::DELIVERED);
+
+    expect($response->getTrackingUrl())->toBe('https://www.mngkargo.com.tr/track/14556546');
 });
 
-it('sends request and returns in-transit response', function () {
-    $request = createTrackingRequest(createTrackingSuccessXml(2, 'Transfer Aşamasında'));
+it('hits trackshipment with referenceId in path', function () {
+    $captured = [];
+    $request = buildTrackingRequest(
+        [trackingTokenResponse(), eventsResponse(), trackingTokenResponse(), statusResponse()],
+        $captured,
+    );
     $request->initialize([
-        'username' => '123',
-        'password' => 'abc',
-        'trackingNumber' => 'SIP-001',
+        'clientId' => 'cid',
+        'clientSecret' => 'csec',
+        'customerNumber' => 'cust',
+        'password' => 'pw',
+        'testMode' => true,
+        'referenceId' => 'abc-123',
     ]);
 
-    $response = $request->send();
-    $info = $response->getTrackingInfo();
+    $request->send();
 
-    expect($info->status)->toBe(\Omniship\Common\Enum\ShipmentStatus::IN_TRANSIT)
-        ->and($info->events[0]->description)->toBe('Transfer Aşamasında');
+    $eventsReq = $captured[1];
+    $statusReq = $captured[3];
+
+    expect($eventsReq->getUri()->getPath())->toEndWith('/trackshipment/ABC-123')
+        ->and($statusReq->getUri()->getPath())->toEndWith('/getshipmentstatus/ABC-123');
 });
 
-it('handles empty response with no shipment data', function () {
-    $request = createTrackingRequest(createTrackingEmptyXml());
+it('falls back to trackingNumber when referenceId is absent', function () {
+    $captured = [];
+    $request = buildTrackingRequest(
+        [trackingTokenResponse(), eventsResponse(), trackingTokenResponse(), statusResponse()],
+        $captured,
+    );
     $request->initialize([
-        'username' => '123',
-        'password' => 'abc',
-        'trackingNumber' => 'SIP-NOTFOUND',
+        'clientId' => 'cid',
+        'clientSecret' => 'csec',
+        'customerNumber' => 'cust',
+        'password' => 'pw',
+        'testMode' => true,
+        'trackingNumber' => 'fallback-ref',
     ]);
 
-    $response = $request->send();
+    $request->send();
 
-    expect($response->isSuccessful())->toBeFalse();
-
-    $info = $response->getTrackingInfo();
-
-    expect($info->trackingNumber)->toBe('SIP-NOTFOUND')
-        ->and($info->status)->toBe(\Omniship\Common\Enum\ShipmentStatus::UNKNOWN)
-        ->and($info->events)->toBeEmpty();
+    expect($captured[1]->getUri()->getPath())->toEndWith('/trackshipment/FALLBACK-REF');
 });
 
-it('throws exception when tracking number is missing', function () {
-    $request = createTrackingRequest(createTrackingSuccessXml());
+it('throws when neither referenceId nor trackingNumber provided', function () {
+    $request = buildTrackingRequest([trackingTokenResponse()]);
     $request->initialize([
-        'username' => '123',
-        'password' => 'abc',
+        'clientId' => 'cid',
+        'clientSecret' => 'csec',
+        'customerNumber' => 'cust',
+        'password' => 'pw',
     ]);
 
     $request->getData();
 })->throws(\Omniship\Common\Exception\InvalidRequestException::class);
+
+it('maps MNG status codes to ShipmentStatus enum', function () {
+    expect(GetTrackingStatusResponse::mapStatus(1))->toBe(ShipmentStatus::PRE_TRANSIT)
+        ->and(GetTrackingStatusResponse::mapStatus(2))->toBe(ShipmentStatus::IN_TRANSIT)
+        ->and(GetTrackingStatusResponse::mapStatus(4))->toBe(ShipmentStatus::OUT_FOR_DELIVERY)
+        ->and(GetTrackingStatusResponse::mapStatus(5))->toBe(ShipmentStatus::DELIVERED)
+        ->and(GetTrackingStatusResponse::mapStatus(7))->toBe(ShipmentStatus::RETURNED)
+        ->and(GetTrackingStatusResponse::mapStatus(99))->toBe(ShipmentStatus::UNKNOWN);
+});

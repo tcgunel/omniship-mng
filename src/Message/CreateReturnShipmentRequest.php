@@ -5,23 +5,20 @@ declare(strict_types=1);
 namespace Omniship\MNG\Message;
 
 use Omniship\Common\Address;
-use Omniship\Common\Exception\HttpException;
 use Omniship\Common\Message\ResponseInterface;
 use Omniship\Common\Package;
 
 /**
- * Two-step flow:
- *   1. POST /standardcmdapi/createOrder      → creates the order
- *   2. POST /barcodecmdapi/createbarcode     → invoices it and returns barcodes
+ * Single-call return-order creation. The response includes a label URL the
+ * shipper hands to the consumer to drop off the parcel.
  */
-class CreateShipmentRequest extends AbstractMngRequest
+class CreateReturnShipmentRequest extends AbstractMngRequest
 {
-    private const CREATE_ORDER_PATH = '/mngapi/api/standardcmdapi/createOrder';
-    private const CREATE_BARCODE_PATH = '/mngapi/api/barcodecmdapi/createbarcode';
+    private const PATH = '/mngapi/api/standardcmdapi/createReturnOrder';
 
     protected function getEndpoint(): string
     {
-        return self::CREATE_ORDER_PATH;
+        return self::PATH;
     }
 
     protected function getHttpMethod(): string
@@ -40,13 +37,13 @@ class CreateShipmentRequest extends AbstractMngRequest
             'customerNumber',
             'password',
             'referenceId',
-            'shipTo',
+            'shipFrom',
             'recipientCityCode',
             'recipientDistrictCode',
         );
 
-        $shipTo = $this->getShipTo();
-        assert($shipTo instanceof Address);
+        $shipFrom = $this->getShipFrom();
+        assert($shipFrom instanceof Address);
 
         $packages = $this->getPackages() ?? [];
         $referenceId = $this->normalizeReference((string) $this->getReferenceId());
@@ -54,92 +51,13 @@ class CreateShipmentRequest extends AbstractMngRequest
         return [
             'order' => $this->buildOrder($referenceId, $packages),
             'orderPieceList' => $this->buildPieceList($referenceId, $packages),
-            'recipient' => $this->buildCustomer($shipTo),
+            'shipper' => $this->buildCustomer($shipFrom),
         ];
     }
 
-    /**
-     * Parent's sendData() does step 1; createResponse() chains step 2 inside.
-     */
     protected function createResponse(mixed $data): ResponseInterface
     {
-        $orderBody = is_array($data) ? ($data['body'] ?? null) : null;
-        $statusCode = is_array($data) ? ($data['status'] ?? 0) : 0;
-
-        // Step 1 succeeded — invoice it via createBarcode
-        if ($statusCode >= 200 && $statusCode < 300 && is_array($orderBody)) {
-            $barcodeBody = $this->callCreateBarcode();
-
-            return new CreateShipmentResponse($this, [
-                'order' => $orderBody,
-                'barcode' => $barcodeBody,
-                'orderHttpStatus' => $statusCode,
-                'barcodeHttpStatus' => $barcodeBody === null ? null : 200,
-            ]);
-        }
-
-        // Step 1 failed — return as-is, no barcoding
-        return new CreateShipmentResponse($this, [
-            'order' => $orderBody,
-            'barcode' => null,
-            'orderHttpStatus' => $statusCode,
-            'barcodeHttpStatus' => null,
-        ]);
-    }
-
-    /**
-     * @return array<string, mixed>|null
-     */
-    private function callCreateBarcode(): ?array
-    {
-        $referenceId = $this->normalizeReference((string) $this->getReferenceId());
-        $packages = $this->getPackages() ?? [];
-
-        $body = json_encode([
-            'referenceId' => $referenceId,
-            'billOfLandingId' => $this->getBillOfLandingId() ?? $this->getInvoiceNumber() ?? '',
-            'isCOD' => $this->getCashOnDelivery() ? 1 : 0,
-            'codAmount' => $this->getCashOnDelivery() ? $this->getCodAmount() : 0,
-            'printReferenceBarcodeOnError' => 0,
-            'message' => '',
-            'additionalContent1' => '',
-            'additionalContent2' => '',
-            'additionalContent3' => '',
-            'additionalContent4' => '',
-            'orderPieceList' => $this->buildPieceList($referenceId, $packages),
-            'packagingType' => $this->getPackagingType(),
-        ], JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
-
-        $response = $this->sendHttpRequest(
-            method: 'POST',
-            url: $this->getBaseUrl() . self::CREATE_BARCODE_PATH,
-            headers: [
-                'X-IBM-Client-Id' => $this->getClientId(),
-                'X-IBM-Client-Secret' => $this->getClientSecret(),
-                'Authorization' => 'Bearer ' . $this->fetchJwt(),
-                'Content-Type' => 'application/json',
-                'Accept' => 'application/json',
-            ],
-            body: $body,
-        );
-
-        $responseBody = (string) $response->getBody();
-        $statusCode = $response->getStatusCode();
-
-        if ($statusCode >= 400) {
-            throw new HttpException(
-                "MNG createBarcode failed with HTTP {$statusCode}: {$responseBody}",
-            );
-        }
-
-        if ($responseBody === '') {
-            return null;
-        }
-
-        /** @var array<string, mixed>|null $decoded */
-        $decoded = json_decode($responseBody, true, 512, JSON_THROW_ON_ERROR);
-
-        return is_array($decoded) ? $decoded : null;
+        return new CreateReturnShipmentResponse($this, $data);
     }
 
     /**

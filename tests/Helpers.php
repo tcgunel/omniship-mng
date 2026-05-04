@@ -12,6 +12,88 @@ use Psr\Http\Message\StreamFactoryInterface;
 use Psr\Http\Message\StreamInterface;
 use Psr\Http\Message\UriInterface;
 
+/**
+ * Sequenced mock client — returns one response per call, repeats the last
+ * once exhausted. Captures every PSR request so tests can assert URL, method
+ * and body after the fact.
+ *
+ * @param list<array{body: string, status: int}> $responses
+ * @param list<RequestInterface>                  $captured
+ */
+function createSequencedMockHttpClient(array $responses, array &$captured = []): ClientInterface
+{
+    return new class ($responses, $captured) implements ClientInterface {
+        private int $cursor = 0;
+
+        /**
+         * @param list<array{body: string, status: int}> $responses
+         * @param list<RequestInterface>                  $captured
+         */
+        public function __construct(
+            private readonly array $responses,
+            private array &$captured,
+        ) {}
+
+        public function sendRequest(RequestInterface $request): PsrResponseInterface
+        {
+            $this->captured[] = $request;
+
+            $entry = $this->responses[$this->cursor] ?? end($this->responses);
+            if ($this->cursor < count($this->responses) - 1) {
+                $this->cursor++;
+            }
+
+            return createMockResponse($entry['body'], $entry['status']);
+        }
+    };
+}
+
+function createMockResponse(string $body, int $statusCode): PsrResponseInterface
+{
+    return new class ($body, $statusCode) implements PsrResponseInterface {
+        public function __construct(
+            private readonly string $body,
+            private readonly int $statusCode,
+        ) {}
+
+        public function getStatusCode(): int { return $this->statusCode; }
+        public function getReasonPhrase(): string { return 'OK'; }
+        public function getProtocolVersion(): string { return '1.1'; }
+        public function withProtocolVersion(string $version): static { return $this; }
+        public function getHeaders(): array { return []; }
+        public function hasHeader(string $name): bool { return false; }
+        public function getHeader(string $name): array { return []; }
+        public function getHeaderLine(string $name): string { return ''; }
+        public function withHeader(string $name, $value): static { return $this; }
+        public function withAddedHeader(string $name, $value): static { return $this; }
+        public function withoutHeader(string $name): static { return $this; }
+        public function withBody(StreamInterface $body): static { return $this; }
+        public function withStatus(int $code, string $reasonPhrase = ''): static { return $this; }
+
+        public function getBody(): StreamInterface
+        {
+            return new class ($this->body) implements StreamInterface {
+                public function __construct(private readonly string $content) {}
+                public function __toString(): string { return $this->content; }
+                public function close(): void {}
+                public function detach() { return null; }
+                public function getSize(): ?int { return strlen($this->content); }
+                public function tell(): int { return 0; }
+                public function eof(): bool { return true; }
+                public function isSeekable(): bool { return false; }
+                public function seek(int $offset, int $whence = SEEK_SET): void {}
+                public function rewind(): void {}
+                public function isWritable(): bool { return false; }
+                public function write(string $string): int { return 0; }
+                public function isReadable(): bool { return true; }
+                public function read(int $length): string { return $this->content; }
+                public function getContents(): string { return $this->content; }
+                public function getMetadata(?string $key = null) { return null; }
+            };
+        }
+    };
+}
+
 function createMockHttpClient(string $responseBody = '{}', int $statusCode = 200): ClientInterface
 {
     return new class ($responseBody, $statusCode) implements ClientInterface {
