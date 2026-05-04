@@ -34,15 +34,19 @@ class CreateShipmentRequest extends AbstractMngRequest
             'pUrunBedeli' => $this->getCashOnDelivery() ? $this->formatNumber($this->getCodAmount() ?? 0.0) : '',
             'pGonderiParcaList' => $this->buildParcaList($packages),
             // Sender
-            'pGonMusteriMngNo' => '',
-            'pGonMusteriBayiNo' => '',
+            'pGonMusteriMngNo' => $this->getSenderMngCustomerNo() ?? '',
+            'pGonMusteriBayiNo' => $this->getSenderDealerNo() ?? '',
             'pGonMusteriSiparisNo' => '',
             'pGonMusteriAdi' => $shipFrom->name ?? '',
             'pGonMusAdresFarkli' => '1',
             'pGonIlAdi' => $this->toUpperTurkish($shipFrom->city ?? ''),
             'pGonIlceAdi' => $this->toUpperTurkish($shipFrom->district ?? ''),
             'pGonAdresText' => $shipFrom->street1 ?? '',
+            'pGonSemt' => $this->getSenderSemt() ?? '',
+            'pGonMahalle' => $this->getSenderMahalle() ?? '',
+            'pGonTelIs' => $this->formatPhone($this->getSenderWorkPhone() ?? ''),
             'pGonTelCep' => $this->formatPhone($shipFrom->phone ?? ''),
+            'pGonFax' => $this->formatPhone($this->getSenderFax() ?? ''),
             'pGonEmail' => $shipFrom->email ?? '',
             'pGonVergiDairesi' => $shipFrom->taxId !== null ? '' : 'SAHIS',
             'pGonVergiNumarasi' => $shipFrom->taxId ?? $shipFrom->nationalId ?? '',
@@ -62,8 +66,8 @@ class CreateShipmentRequest extends AbstractMngRequest
             'pOdemeSekli' => $this->mapPaymentType($this->getPaymentType()),
             'pTeslimSekli' => 'Adrese_Teslim',
             'pKargoCinsi' => 'PAKET',
-            'pGonSms' => 0,
-            'pAliciSms' => 0,
+            'pGonSms' => $this->getSendSmsToSender() ? 'SMSGonderilsin' : 'SMSGonderilmesin',
+            'pAliciSms' => $this->getSendSmsToReceiver() ? 'SMSGonderilsin' : 'SMSGonderilmesin',
             'pKapidaTahsilat' => $this->getCashOnDelivery() ? 'Mal_Bedeli_Tahsil_Edilsin' : 'Mal_Bedeli_Tahsil_Edilmesin',
             'pAciklama' => $this->getShipmentDescription($packages),
         ];
@@ -116,15 +120,15 @@ class CreateShipmentRequest extends AbstractMngRequest
             . '<pGonIlAdi>' . $this->xmlEscape((string) $data['pGonIlAdi']) . '</pGonIlAdi>'
             . '<pGonIlceAdi>' . $this->xmlEscape((string) $data['pGonIlceAdi']) . '</pGonIlceAdi>'
             . '<pGonAdresText>' . $this->xmlEscape((string) $data['pGonAdresText']) . '</pGonAdresText>'
-            . '<pGonSemt></pGonSemt>'
-            . '<pGonMahalle></pGonMahalle>'
+            . '<pGonSemt>' . $this->xmlEscape((string) $data['pGonSemt']) . '</pGonSemt>'
+            . '<pGonMahalle>' . $this->xmlEscape((string) $data['pGonMahalle']) . '</pGonMahalle>'
             . '<pGonMeydanBulvar></pGonMeydanBulvar>'
             . '<pGonCadde></pGonCadde>'
             . '<pGonSokak></pGonSokak>'
-            . '<pGonTelIs></pGonTelIs>'
+            . '<pGonTelIs>' . $this->xmlEscape((string) $data['pGonTelIs']) . '</pGonTelIs>'
             . '<pGonTelEv></pGonTelEv>'
             . '<pGonTelCep>' . $this->xmlEscape((string) $data['pGonTelCep']) . '</pGonTelCep>'
-            . '<pGonFax></pGonFax>'
+            . '<pGonFax>' . $this->xmlEscape((string) $data['pGonFax']) . '</pGonFax>'
             . '<pGonEmail>' . $this->xmlEscape((string) $data['pGonEmail']) . '</pGonEmail>'
             . '<pGonVergiDairesi>' . $this->xmlEscape((string) $data['pGonVergiDairesi']) . '</pGonVergiDairesi>'
             . '<pGonVergiNumarasi>' . $this->xmlEscape((string) $data['pGonVergiNumarasi']) . '</pGonVergiNumarasi>'
@@ -150,8 +154,8 @@ class CreateShipmentRequest extends AbstractMngRequest
             . '<pOdemeSekli>' . $this->xmlEscape((string) $data['pOdemeSekli']) . '</pOdemeSekli>'
             . '<pTeslimSekli>' . $this->xmlEscape((string) $data['pTeslimSekli']) . '</pTeslimSekli>'
             . '<pKargoCinsi>' . $this->xmlEscape((string) $data['pKargoCinsi']) . '</pKargoCinsi>'
-            . '<pGonSms>' . (int) $data['pGonSms'] . '</pGonSms>'
-            . '<pAliciSms>' . (int) $data['pAliciSms'] . '</pAliciSms>'
+            . '<pGonSms>' . $this->xmlEscape((string) $data['pGonSms']) . '</pGonSms>'
+            . '<pAliciSms>' . $this->xmlEscape((string) $data['pAliciSms']) . '</pAliciSms>'
             . '<pKapidaTahsilat>' . $this->xmlEscape((string) $data['pKapidaTahsilat']) . '</pKapidaTahsilat>'
             . '<pAciklama>' . $this->xmlEscape((string) $data['pAciklama']) . '</pAciklama>'
             . '</SiparisKayit_C2C>';

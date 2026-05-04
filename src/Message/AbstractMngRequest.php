@@ -92,6 +92,86 @@ abstract class AbstractMngRequest extends AbstractHttpRequest
         return $this->setParameter('codAmount', $codAmount);
     }
 
+    public function getSendSmsToSender(): bool
+    {
+        return (bool) ($this->getParameter('sendSmsToSender') ?? false);
+    }
+
+    public function setSendSmsToSender(bool $sendSms): static
+    {
+        return $this->setParameter('sendSmsToSender', $sendSms);
+    }
+
+    public function getSendSmsToReceiver(): bool
+    {
+        return (bool) ($this->getParameter('sendSmsToReceiver') ?? false);
+    }
+
+    public function setSendSmsToReceiver(bool $sendSms): static
+    {
+        return $this->setParameter('sendSmsToReceiver', $sendSms);
+    }
+
+    public function getSenderMngCustomerNo(): ?string
+    {
+        return $this->getParameter('senderMngCustomerNo');
+    }
+
+    public function setSenderMngCustomerNo(string $value): static
+    {
+        return $this->setParameter('senderMngCustomerNo', $value);
+    }
+
+    public function getSenderDealerNo(): ?string
+    {
+        return $this->getParameter('senderDealerNo');
+    }
+
+    public function setSenderDealerNo(string $value): static
+    {
+        return $this->setParameter('senderDealerNo', $value);
+    }
+
+    public function getSenderSemt(): ?string
+    {
+        return $this->getParameter('senderSemt');
+    }
+
+    public function setSenderSemt(string $value): static
+    {
+        return $this->setParameter('senderSemt', $value);
+    }
+
+    public function getSenderMahalle(): ?string
+    {
+        return $this->getParameter('senderMahalle');
+    }
+
+    public function setSenderMahalle(string $value): static
+    {
+        return $this->setParameter('senderMahalle', $value);
+    }
+
+    public function getSenderWorkPhone(): ?string
+    {
+        return $this->getParameter('senderWorkPhone');
+    }
+
+    public function setSenderWorkPhone(string $value): static
+    {
+        return $this->setParameter('senderWorkPhone', $value);
+    }
+
+    public function getSenderFax(): ?string
+    {
+        return $this->getParameter('senderFax');
+    }
+
+    public function setSenderFax(string $value): static
+    {
+        return $this->setParameter('senderFax', $value);
+    }
+
     protected function getSoapUrl(): string
     {
         return $this->getTestMode() ? self::SOAP_URL_TEST : self::SOAP_URL_PRODUCTION;
