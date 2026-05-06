@@ -8,12 +8,19 @@ use Omniship\Common\Enum\PaymentType;
 use Omniship\Common\Exception\HttpException;
 use Omniship\Common\Message\AbstractHttpRequest;
 use Omniship\Common\Message\ResponseInterface;
+use Psr\SimpleCache\CacheInterface;
 
 abstract class AbstractMngRequest extends AbstractHttpRequest
 {
     private const BASE_URL_TEST = 'https://testapi.mngkargo.com.tr';
     private const BASE_URL_PRODUCTION = 'https://api.mngkargo.com.tr';
     private const TOKEN_PATH = '/mngapi/api/token';
+
+    /**
+     * MNG JWTs are valid for 8 hours. Cache them for 7 to leave a safety
+     * buffer for in-flight requests.
+     */
+    private const TOKEN_CACHE_TTL_SECONDS = 7 * 3600;
 
     abstract protected function getEndpoint(): string;
 
@@ -72,6 +79,18 @@ abstract class AbstractMngRequest extends AbstractHttpRequest
     public function setIdentityType(int $identityType): static
     {
         return $this->setParameter('identityType', $identityType);
+    }
+
+    public function getTokenCache(): ?CacheInterface
+    {
+        $cache = $this->getParameter('tokenCache');
+
+        return $cache instanceof CacheInterface ? $cache : null;
+    }
+
+    public function setTokenCache(?CacheInterface $cache): static
+    {
+        return $this->setParameter('tokenCache', $cache);
     }
 
     public function getPaymentType(): ?PaymentType
@@ -335,6 +354,20 @@ abstract class AbstractMngRequest extends AbstractHttpRequest
 
     protected function fetchJwt(): string
     {
+        $cache = $this->getTokenCache();
+        $cacheKey = $this->buildTokenCacheKey();
+
+        if ($cache !== null) {
+            try {
+                $cached = $cache->get($cacheKey);
+            } catch (\Psr\SimpleCache\InvalidArgumentException) {
+                $cached = null;
+            }
+            if (is_string($cached) && $cached !== '') {
+                return $cached;
+            }
+        }
+
         $url = $this->getBaseUrl() . self::TOKEN_PATH;
 
         $body = json_encode([
@@ -371,7 +404,28 @@ abstract class AbstractMngRequest extends AbstractHttpRequest
             throw new HttpException("MNG Identity API returned no JWT: {$responseBody}");
         }
 
+        if ($cache !== null) {
+            try {
+                $cache->set($cacheKey, $decoded['jwt'], self::TOKEN_CACHE_TTL_SECONDS);
+            } catch (\Psr\SimpleCache\InvalidArgumentException) {
+                // Cache write failures are non-fatal — we still return the JWT.
+            }
+        }
+
         return $decoded['jwt'];
+    }
+
+    /**
+     * Cache key is scoped per (env + clientId + customerNumber) so multiple
+     * shops on the same cache backend can't see each other's tokens, and
+     * test/prod tokens never collide.
+     */
+    private function buildTokenCacheKey(): string
+    {
+        $env = $this->getTestMode() ? 'test' : 'prod';
+        $hash = sha1($this->getClientId() . '|' . $this->getCustomerNumber());
+
+        return "omniship_mng_jwt_{$env}_{$hash}";
     }
 
     /**

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Omniship\MNG\Tests;
 
 use Psr\Http\Client\ClientInterface;
+use Psr\SimpleCache\CacheInterface;
 use Psr\Http\Message\RequestFactoryInterface;
 use Psr\Http\Message\RequestInterface;
 use Psr\Http\Message\ResponseInterface as PsrResponseInterface;
@@ -333,5 +334,36 @@ function createMockStreamFactory(): StreamFactoryInterface
         {
             return $this->createStream('');
         }
+    };
+}
+
+function createInMemoryCache(): CacheInterface
+{
+    return new class implements CacheInterface {
+        /** @var array<string, array{value: mixed, expiresAt: int}> */
+        private array $store = [];
+
+        public function get(string $key, mixed $default = null): mixed
+        {
+            $entry = $this->store[$key] ?? null;
+            if ($entry === null || $entry["expiresAt"] < time()) {
+                return $default;
+            }
+            return $entry["value"];
+        }
+
+        public function set(string $key, mixed $value, \DateInterval|int|null $ttl = null): bool
+        {
+            $seconds = is_int($ttl) ? $ttl : 3600;
+            $this->store[$key] = ["value" => $value, "expiresAt" => time() + $seconds];
+            return true;
+        }
+
+        public function delete(string $key): bool { unset($this->store[$key]); return true; }
+        public function clear(): bool { $this->store = []; return true; }
+        public function getMultiple(iterable $keys, mixed $default = null): iterable { return []; }
+        public function setMultiple(iterable $values, \DateInterval|int|null $ttl = null): bool { return true; }
+        public function deleteMultiple(iterable $keys): bool { return true; }
+        public function has(string $key): bool { return isset($this->store[$key]); }
     };
 }

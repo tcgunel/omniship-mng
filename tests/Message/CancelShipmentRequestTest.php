@@ -35,10 +35,11 @@ function defaultCancelParams(): array
         'password' => 'pw',
         'testMode' => true,
         'referenceId' => 'siparis-001',
+        'shipmentId' => '614118757013',
     ];
 }
 
-it('issues PUT to /cancelorder with uppercased referenceId in path', function () {
+it('issues PUT to /barcodecmdapi/cancelshipment with referenceId+shipmentId body', function () {
     $captured = [];
     $request = buildCancelRequest(
         [tokenSuccess(), ['body' => '"OK"', 'status' => 200]],
@@ -55,8 +56,12 @@ it('issues PUT to /cancelorder with uppercased referenceId in path', function ()
     $cancelReq = $captured[1];
 
     expect($cancelReq->getMethod())->toBe('PUT')
-        ->and($cancelReq->getUri()->getPath())->toEndWith('/cancelorder/SIPARIS-001')
+        ->and($cancelReq->getUri()->getPath())->toEndWith('/barcodecmdapi/cancelshipment')
         ->and($cancelReq->getHeaderLine('Authorization'))->toBe('Bearer tok');
+
+    $body = json_decode((string) $cancelReq->getBody(), true);
+    expect($body['referenceId'])->toBe('SIPARIS-001')
+        ->and($body['shipmentId'])->toBe('614118757013');
 });
 
 it('marks failed cancel as not successful with status code as code', function () {
