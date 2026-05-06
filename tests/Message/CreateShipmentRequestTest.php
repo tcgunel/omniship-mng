@@ -165,7 +165,7 @@ it('marks response as not successful when createOrder fails', function () {
 
     expect($response->isSuccessful())->toBeFalse()
         ->and($response->getCode())->toBe('400')
-        ->and($response->getMessage())->toBe('Bad Request');
+        ->and($response->getMessage())->toBe('invalid');
 });
 
 it('hits test endpoint when testMode is true and prod when false', function () {

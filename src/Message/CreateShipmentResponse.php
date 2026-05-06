@@ -28,15 +28,38 @@ class CreateShipmentResponse extends AbstractResponse implements ShipmentRespons
 
     public function getMessage(): ?string
     {
-        $orderBody = $this->orderBody();
+        return self::extractErrorMessage($this->orderBody())
+            ?? self::extractErrorMessage($this->barcodeBody());
+    }
 
-        if (is_array($orderBody)) {
-            if (isset($orderBody['title']) && is_string($orderBody['title'])) {
-                return $orderBody['title'];
+    /**
+     * @param array<string, mixed>|null $body
+     */
+    public static function extractErrorMessage(?array $body): ?string
+    {
+        if ($body === null) {
+            return null;
+        }
+
+        // MNG error shape: {"error":{"code":"...","message":"...","description":"..."}}
+        if (isset($body['error']) && is_array($body['error'])) {
+            $error = $body['error'];
+            $description = $error['description'] ?? null;
+            if (is_string($description) && $description !== '') {
+                return $description;
             }
-            if (isset($orderBody['detail']) && is_string($orderBody['detail'])) {
-                return $orderBody['detail'];
+            $message = $error['message'] ?? null;
+            if (is_string($message) && $message !== '') {
+                return $message;
             }
+        }
+
+        // ProblemDetails shape (per swagger): {"title":"...","detail":"..."}
+        if (isset($body['detail']) && is_string($body['detail']) && $body['detail'] !== '') {
+            return $body['detail'];
+        }
+        if (isset($body['title']) && is_string($body['title']) && $body['title'] !== '') {
+            return $body['title'];
         }
 
         return null;

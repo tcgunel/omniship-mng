@@ -7,6 +7,7 @@ namespace Omniship\MNG;
 use Omniship\Common\AbstractHttpCarrier;
 use Omniship\Common\Message\RequestInterface;
 use Omniship\MNG\Message\CancelShipmentRequest;
+use Omniship\MNG\Message\CreateRecipientRequest;
 use Omniship\MNG\Message\CreateReturnShipmentRequest;
 use Omniship\MNG\Message\CreateShipmentRequest;
 use Omniship\MNG\Message\GetCitiesRequest;
@@ -49,6 +50,14 @@ class Carrier extends AbstractHttpCarrier
     public function createShipment(array $options = []): RequestInterface
     {
         return $this->createRequest(CreateShipmentRequest::class, $options);
+    }
+
+    /**
+     * @param array<string, mixed> $options
+     */
+    public function createRecipient(array $options = []): RequestInterface
+    {
+        return $this->createRequest(CreateRecipientRequest::class, $options);
     }
 
     /**

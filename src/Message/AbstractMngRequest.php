@@ -124,6 +124,16 @@ abstract class AbstractMngRequest extends AbstractHttpRequest
         return $this->setParameter('invoiceNumber', $invoiceNumber);
     }
 
+    public function getRecipientTaxNumber(): ?string
+    {
+        return $this->getParameter('recipientTaxNumber');
+    }
+
+    public function setRecipientTaxNumber(?string $value): static
+    {
+        return $this->setParameter('recipientTaxNumber', $value);
+    }
+
     public function getRecipientCityCode(): ?int
     {
         $value = $this->getParameter('recipientCityCode');

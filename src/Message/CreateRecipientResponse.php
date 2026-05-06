@@ -4,11 +4,10 @@ declare(strict_types=1);
 
 namespace Omniship\MNG\Message;
 
-use Omniship\Common\Label;
 use Omniship\Common\Message\AbstractResponse;
-use Omniship\Common\Message\ShipmentResponse;
+use Omniship\Common\Message\ResponseInterface;
 
-class CreateReturnShipmentResponse extends AbstractResponse implements ShipmentResponse
+class CreateRecipientResponse extends AbstractResponse implements ResponseInterface
 {
     public function isSuccessful(): bool
     {
@@ -31,56 +30,14 @@ class CreateReturnShipmentResponse extends AbstractResponse implements ShipmentR
         return $status === null ? null : (string) $status;
     }
 
-    public function getShipmentId(): ?string
+    public function getShipperBranchCode(): ?string
     {
         $body = $this->body();
 
-        if (is_array($body) && isset($body['orderInvoiceId'])) {
-            return (string) $body['orderInvoiceId'];
+        if (is_array($body) && isset($body['shipperBranchCode'])) {
+            return (string) $body['shipperBranchCode'];
         }
 
-        return null;
-    }
-
-    public function getTrackingNumber(): ?string
-    {
-        $body = $this->body();
-
-        if (is_array($body) && isset($body['referenceId'])) {
-            return (string) $body['referenceId'];
-        }
-
-        return null;
-    }
-
-    public function getBarcode(): ?string
-    {
-        return $this->getTrackingNumber();
-    }
-
-    public function getReturnLabelUrl(): ?string
-    {
-        $body = $this->body();
-
-        if (is_array($body) && isset($body['returnOrderLabelURL'])) {
-            return (string) $body['returnOrderLabelURL'];
-        }
-
-        return null;
-    }
-
-    public function getLabel(): ?Label
-    {
-        return null;
-    }
-
-    public function getTotalCharge(): ?float
-    {
-        return null;
-    }
-
-    public function getCurrency(): ?string
-    {
         return null;
     }
 

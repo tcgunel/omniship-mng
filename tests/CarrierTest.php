@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use Omniship\MNG\Carrier;
 use Omniship\MNG\Message\CancelShipmentRequest;
+use Omniship\MNG\Message\CreateRecipientRequest;
 use Omniship\MNG\Message\CreateReturnShipmentRequest;
 use Omniship\MNG\Message\CreateShipmentRequest;
 use Omniship\MNG\Message\GetCitiesRequest;
@@ -59,6 +60,7 @@ it('exposes default parameters with empty credentials', function () {
 
 it('supports the standard carrier methods', function () {
     expect($this->carrier->supports('createShipment'))->toBeTrue()
+        ->and($this->carrier->supports('createRecipient'))->toBeTrue()
         ->and($this->carrier->supports('createReturnShipment'))->toBeTrue()
         ->and($this->carrier->supports('getTrackingStatus'))->toBeTrue()
         ->and($this->carrier->supports('cancelShipment'))->toBeTrue()
@@ -68,6 +70,7 @@ it('supports the standard carrier methods', function () {
 
 it('returns the right request class per method', function () {
     expect($this->carrier->createShipment())->toBeInstanceOf(CreateShipmentRequest::class)
+        ->and($this->carrier->createRecipient())->toBeInstanceOf(CreateRecipientRequest::class)
         ->and($this->carrier->createReturnShipment())->toBeInstanceOf(CreateReturnShipmentRequest::class)
         ->and($this->carrier->cancelShipment())->toBeInstanceOf(CancelShipmentRequest::class)
         ->and($this->carrier->getTrackingStatus())->toBeInstanceOf(GetTrackingStatusRequest::class)

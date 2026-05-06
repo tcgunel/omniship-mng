@@ -138,7 +138,10 @@ class CreateReturnShipmentRequest extends AbstractMngRequest
             'bussinessPhoneNumber' => '',
             'email' => $address->email ?? '',
             'taxOffice' => $address->taxId !== null ? '' : 'SAHIS',
-            'taxNumber' => $address->taxId ?? $address->nationalId ?? '',
+            'taxNumber' => $this->getRecipientTaxNumber()
+                ?? $address->taxId
+                ?? $address->nationalId
+                ?? '',
             'fullName' => $address->name ?? '',
             'homePhoneNumber' => '',
             'mobilePhoneNumber' => $this->normalizePhone($address->phone ?? ''),
