@@ -74,25 +74,54 @@ class CreateShipmentRequest extends AbstractMngRequest
         $orderBody = is_array($data) ? ($data['body'] ?? null) : null;
         $statusCode = is_array($data) ? ($data['status'] ?? 0) : 0;
 
-        // Step 1 succeeded — invoice it via createBarcode
-        if ($statusCode >= 200 && $statusCode < 300 && is_array($orderBody)) {
+        $orderSucceeded = $statusCode >= 200 && $statusCode < 300 && is_array($orderBody);
+
+        // MNG returns 500 + code 3002 / "BU SİPARİS NUMARASINA AİT KAYIT ZATEN
+        // VAR!" when the same referenceId was already accepted on a previous
+        // call. The order IS on their side — skip ahead to createBarcode.
+        $orderAlreadyExists = !$orderSucceeded
+            && is_array($orderBody)
+            && $this->isOrderAlreadyExistsError($orderBody);
+
+        if ($orderSucceeded || $orderAlreadyExists) {
             $barcodeBody = $this->callCreateBarcode();
 
             return new CreateShipmentResponse($this, [
                 'order' => $orderBody,
                 'barcode' => $barcodeBody,
-                'orderHttpStatus' => $statusCode,
+                // synthesize a success status when we recovered from "already
+                // exists" so isSuccessful() reflects the real outcome
+                'orderHttpStatus' => $orderAlreadyExists ? 200 : $statusCode,
                 'barcodeHttpStatus' => $barcodeBody === null ? null : 200,
             ]);
         }
 
-        // Step 1 failed — return as-is, no barcoding
+        // Step 1 failed for a real reason — return as-is, no barcoding
         return new CreateShipmentResponse($this, [
             'order' => $orderBody,
             'barcode' => null,
             'orderHttpStatus' => $statusCode,
             'barcodeHttpStatus' => null,
         ]);
+    }
+
+    /**
+     * @param array<string, mixed> $body
+     */
+    private function isOrderAlreadyExistsError(array $body): bool
+    {
+        $error = is_array($body['error'] ?? null) ? $body['error'] : null;
+        if ($error === null) {
+            return false;
+        }
+
+        if (($error['Code'] ?? $error['code'] ?? null) === '3002') {
+            return true;
+        }
+
+        $description = (string) ($error['Description'] ?? $error['description'] ?? '');
+
+        return str_contains($description, 'ZATEN VAR');
     }
 
     /**

@@ -294,6 +294,45 @@ it('gives up after exhausting retries and surfaces the original 20001 error', fu
         ->toThrow(\Omniship\Common\Exception\HttpException::class);
 });
 
+it('skips to createBarcode when MNG returns 3002 (referenceId already exists)', function () {
+    // Real-world scenario: previous shipment attempt had createOrder succeed
+    // but createBarcode fail. On retry, createOrder rejects the duplicate;
+    // we must still proceed to createBarcode to recover the missing barcode.
+    $alreadyExistsError = [
+        'body' => json_encode([
+            'error' => [
+                'ReferenceId' => 'OMN-XYZ',
+                'Code' => '3002',
+                'Message' => 'Database Error',
+                'Description' => 'BU SİPARİS NUMARASINA AİT KAYIT ZATEN VAR!',
+            ],
+        ], JSON_THROW_ON_ERROR),
+        'status' => 500,
+    ];
+
+    $captured = [];
+    $request = buildCreateShipmentRequest(
+        [
+            tokenResponse(),                // token for createOrder
+            $alreadyExistsError,            // createOrder rejects duplicate
+            tokenResponse(),                // token for createBarcode
+            createBarcodeSuccess(),         // createBarcode now succeeds
+        ],
+        $captured,
+    );
+    $request->initialize(defaultShipmentParams());
+
+    $response = $request->send();
+
+    expect($response->isSuccessful())->toBeTrue()
+        ->and($response->getShipmentId())->toBe('4536457657')
+        ->and($response->getBarcode())->toBe('BARCODE-001');
+
+    // Confirm createBarcode was actually called (4 captured: token + order + token + barcode)
+    expect(count($captured))->toBe(4)
+        ->and($captured[3]->getUri()->getPath())->toEndWith('/createbarcode');
+});
+
 it('handles MNG array-wrapped responses (real-world shape)', function () {
     // MNG returns single-object responses wrapped in [{...}], not {...}
     // as the swagger documents. The response classes must unwrap.
