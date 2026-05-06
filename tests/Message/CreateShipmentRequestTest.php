@@ -222,6 +222,78 @@ it('maps PaymentType::RECEIVER to 2', function () {
     expect($request->getData()['order']['paymentType'])->toBe(2);
 });
 
+it('retries createBarcode when MNG returns 20001 VARIŞ ŞUBESİ BULUNAMADI', function () {
+    $branchNotResolvedError = [
+        'body' => json_encode([
+            'error' => [
+                'Code' => '20001',
+                'Message' => 'Error',
+                'Description' => "<WERR> OMN-XYZ NO'LU SİPARİŞ KAYDI İÇİN VARIŞ ŞUBESİ BULUNAMADI ! DAHA SONRA TEKRAR DENEYİN ! </WERR>",
+            ],
+        ], JSON_THROW_ON_ERROR),
+        'status' => 500,
+    ];
+
+    // Subclass that skips the actual sleep so the test runs instantly
+    $request = new class (
+        \Omniship\MNG\Tests\createSequencedMockHttpClient([
+            tokenResponse(),                // for createOrder
+            createOrderSuccess(),
+            tokenResponse(),                // for first createBarcode attempt (token is re-fetched in two-step)
+            $branchNotResolvedError,        // retry 1 — fails
+            $branchNotResolvedError,        // retry 2 — fails
+            createBarcodeSuccess(),         // retry 3 — succeeds
+        ]),
+        \Omniship\MNG\Tests\createMockRequestFactory(),
+        \Omniship\MNG\Tests\createMockStreamFactory(),
+    ) extends \Omniship\MNG\Message\CreateShipmentRequest {
+        public int $sleeps = 0;
+        protected function sleep(int $seconds): void
+        {
+            $this->sleeps++;
+        }
+    };
+
+    $request->initialize(defaultShipmentParams());
+
+    $response = $request->send();
+
+    expect($response->isSuccessful())->toBeTrue()
+        ->and($response->getShipmentId())->toBe('4536457657')
+        ->and($request->sleeps)->toBe(2); // two retries, two sleeps
+});
+
+it('gives up after exhausting retries and surfaces the original 20001 error', function () {
+    $branchNotResolvedError = [
+        'body' => json_encode([
+            'error' => [
+                'Code' => '20001',
+                'Description' => 'VARIŞ ŞUBESİ BULUNAMADI',
+            ],
+        ], JSON_THROW_ON_ERROR),
+        'status' => 500,
+    ];
+
+    $request = new class (
+        \Omniship\MNG\Tests\createSequencedMockHttpClient([
+            tokenResponse(),
+            createOrderSuccess(),
+            tokenResponse(),
+            $branchNotResolvedError,
+            $branchNotResolvedError,
+            $branchNotResolvedError,
+        ]),
+        \Omniship\MNG\Tests\createMockRequestFactory(),
+        \Omniship\MNG\Tests\createMockStreamFactory(),
+    ) extends \Omniship\MNG\Message\CreateShipmentRequest {
+        protected function sleep(int $seconds): void {}
+    };
+    $request->initialize(defaultShipmentParams());
+
+    expect(fn () => $request->send())
+        ->toThrow(\Omniship\Common\Exception\HttpException::class);
+});
+
 it('handles MNG array-wrapped responses (real-world shape)', function () {
     // MNG returns single-object responses wrapped in [{...}], not {...}
     // as the swagger documents. The response classes must unwrap.

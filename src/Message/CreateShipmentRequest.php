@@ -19,6 +19,14 @@ class CreateShipmentRequest extends AbstractMngRequest
     private const CREATE_ORDER_PATH = '/mngapi/api/standardcmdapi/createOrder';
     private const CREATE_BARCODE_PATH = '/mngapi/api/barcodecmdapi/createbarcode';
 
+    /**
+     * MNG returns error 20001 ("VARIŞ ŞUBESİ BULUNAMADI") when createBarcode
+     * fires before they've resolved the destination branch from the recipient
+     * registration. Retry pattern: total 3 attempts (initial + 2 retries),
+     * sleeping between each so MNG has time to finish the lookup.
+     */
+    private const BARCODE_RETRY_DELAYS_SECONDS = [5, 10];
+
     protected function getEndpoint(): string
     {
         return self::CREATE_ORDER_PATH;
@@ -110,36 +118,92 @@ class CreateShipmentRequest extends AbstractMngRequest
             'packagingType' => $this->getPackagingType(),
         ], JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
 
-        $response = $this->sendHttpRequest(
-            method: 'POST',
-            url: $this->getBaseUrl() . self::CREATE_BARCODE_PATH,
-            headers: [
-                'X-IBM-Client-Id' => $this->getClientId(),
-                'X-IBM-Client-Secret' => $this->getClientSecret(),
-                'Authorization' => 'Bearer ' . $this->fetchJwt(),
-                'Content-Type' => 'application/json',
-                'Accept' => 'application/json',
-            ],
-            body: $body,
-        );
+        $headers = [
+            'X-IBM-Client-Id' => $this->getClientId(),
+            'X-IBM-Client-Secret' => $this->getClientSecret(),
+            'Authorization' => 'Bearer ' . $this->fetchJwt(),
+            'Content-Type' => 'application/json',
+            'Accept' => 'application/json',
+        ];
 
-        $responseBody = (string) $response->getBody();
-        $statusCode = $response->getStatusCode();
+        $attempt = 0;
+        $maxAttempts = count(self::BARCODE_RETRY_DELAYS_SECONDS) + 1;
 
-        if ($statusCode >= 400) {
-            throw new HttpException(
-                "MNG createBarcode failed with HTTP {$statusCode}: {$responseBody}",
+        while (true) {
+            $attempt++;
+
+            $response = $this->sendHttpRequest(
+                method: 'POST',
+                url: $this->getBaseUrl() . self::CREATE_BARCODE_PATH,
+                headers: $headers,
+                body: $body,
             );
+
+            $responseBody = (string) $response->getBody();
+            $statusCode = $response->getStatusCode();
+
+            // MNG-specific: branch not resolved yet, retry after a delay.
+            if ($this->isBranchNotResolvedYet($statusCode, $responseBody) && $attempt < $maxAttempts) {
+                $delay = self::BARCODE_RETRY_DELAYS_SECONDS[$attempt - 1];
+                $this->sleep($delay);
+                continue;
+            }
+
+            if ($statusCode >= 400) {
+                throw new HttpException(
+                    "MNG createBarcode failed with HTTP {$statusCode}: {$responseBody}",
+                );
+            }
+
+            if ($responseBody === '') {
+                return null;
+            }
+
+            /** @var array<string, mixed>|null $decoded */
+            $decoded = json_decode($responseBody, true, 512, JSON_THROW_ON_ERROR);
+
+            return is_array($decoded) ? $decoded : null;
+        }
+    }
+
+    /**
+     * Detects MNG error 20001 — destination branch not yet resolved on
+     * their backend. Identified by either the numeric code or the
+     * Turkish error description.
+     */
+    private function isBranchNotResolvedYet(int $statusCode, string $responseBody): bool
+    {
+        if ($statusCode < 400 || $responseBody === '') {
+            return false;
         }
 
-        if ($responseBody === '') {
-            return null;
+        try {
+            /** @var array<string, mixed> $decoded */
+            $decoded = json_decode($responseBody, true, 512, JSON_THROW_ON_ERROR);
+        } catch (\JsonException) {
+            return false;
         }
 
-        /** @var array<string, mixed>|null $decoded */
-        $decoded = json_decode($responseBody, true, 512, JSON_THROW_ON_ERROR);
+        $error = is_array($decoded['error'] ?? null) ? $decoded['error'] : null;
+        if ($error === null) {
+            return false;
+        }
 
-        return is_array($decoded) ? $decoded : null;
+        if (($error['Code'] ?? $error['code'] ?? null) === '20001') {
+            return true;
+        }
+
+        $description = (string) ($error['Description'] ?? $error['description'] ?? '');
+
+        return str_contains($description, 'VARIŞ ŞUBESİ');
+    }
+
+    /**
+     * Indirected for testability (overridable / mockable).
+     */
+    protected function sleep(int $seconds): void
+    {
+        sleep(max(0, $seconds));
     }
 
     /**
