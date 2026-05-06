@@ -93,7 +93,9 @@ class CreateReturnShipmentResponse extends AbstractResponse implements ShipmentR
             return null;
         }
 
-        return is_array($this->data['body']) ? $this->data['body'] : null;
+        return CreateShipmentResponse::unwrapBody(
+            is_array($this->data['body']) ? $this->data['body'] : null,
+        );
     }
 
     private function httpStatus(): ?int

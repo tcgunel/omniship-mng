@@ -64,7 +64,7 @@ class CancelShipmentResponse extends AbstractResponse implements CancelResponse
         $body = $this->data['body'];
 
         if (is_array($body)) {
-            return $body;
+            return CreateShipmentResponse::unwrapBody($body);
         }
 
         return is_string($body) ? $body : null;

@@ -175,7 +175,9 @@ class GetTrackingStatusResponse extends AbstractResponse implements TrackingResp
             return null;
         }
 
-        return is_array($this->data['status']) ? $this->data['status'] : null;
+        return CreateShipmentResponse::unwrapBody(
+            is_array($this->data['status']) ? $this->data['status'] : null,
+        );
     }
 
     /**

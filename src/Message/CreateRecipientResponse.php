@@ -50,7 +50,9 @@ class CreateRecipientResponse extends AbstractResponse implements ResponseInterf
             return null;
         }
 
-        return is_array($this->data['body']) ? $this->data['body'] : null;
+        return CreateShipmentResponse::unwrapBody(
+            is_array($this->data['body']) ? $this->data['body'] : null,
+        );
     }
 
     private function httpStatus(): ?int

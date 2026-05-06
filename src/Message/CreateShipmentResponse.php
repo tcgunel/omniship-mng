@@ -33,6 +33,29 @@ class CreateShipmentResponse extends AbstractResponse implements ShipmentRespons
     }
 
     /**
+     * MNG returns single-object responses as a one-element array
+     * ([{...}]) instead of {...} per the swagger. Normalize both.
+     *
+     * @param array<int|string, mixed>|null $body
+     * @return array<string, mixed>|null
+     */
+    public static function unwrapBody(?array $body): ?array
+    {
+        if ($body === null || $body === []) {
+            return $body;
+        }
+
+        if (array_is_list($body)) {
+            $first = $body[0] ?? null;
+
+            return is_array($first) ? $first : null;
+        }
+
+        /** @var array<string, mixed> $body */
+        return $body;
+    }
+
+    /**
      * @param array<string, mixed>|null $body
      */
     public static function extractErrorMessage(?array $body): ?string
@@ -171,7 +194,7 @@ class CreateShipmentResponse extends AbstractResponse implements ShipmentRespons
             return null;
         }
 
-        return is_array($this->data['order']) ? $this->data['order'] : null;
+        return self::unwrapBody(is_array($this->data['order']) ? $this->data['order'] : null);
     }
 
     /**
@@ -183,7 +206,7 @@ class CreateShipmentResponse extends AbstractResponse implements ShipmentRespons
             return null;
         }
 
-        return is_array($this->data['barcode']) ? $this->data['barcode'] : null;
+        return self::unwrapBody(is_array($this->data['barcode']) ? $this->data['barcode'] : null);
     }
 
     private function intField(string $key): ?int

@@ -222,6 +222,42 @@ it('maps PaymentType::RECEIVER to 2', function () {
     expect($request->getData()['order']['paymentType'])->toBe(2);
 });
 
+it('handles MNG array-wrapped responses (real-world shape)', function () {
+    // MNG returns single-object responses wrapped in [{...}], not {...}
+    // as the swagger documents. The response classes must unwrap.
+    $orderArrayWrapped = [
+        'body' => json_encode([[
+            'orderInvoiceId' => '1707264',
+            'orderInvoiceDetailId' => '1707777',
+            'shipperBranchCode' => '03401700',
+            'referenceId' => 'OMN-XYZ',
+        ]], JSON_THROW_ON_ERROR),
+        'status' => 200,
+    ];
+    $barcodeArrayWrapped = [
+        'body' => json_encode([[
+            'referenceId' => 'OMN-XYZ',
+            'invoiceId' => 'FM378349',
+            'shipmentId' => '614118757013',
+            'barcodes' => [['pieceNumber' => 1, 'value' => '^XA...^XZ']],
+        ]], JSON_THROW_ON_ERROR),
+        'status' => 200,
+    ];
+
+    $request = buildCreateShipmentRequest(
+        [tokenResponse(), $orderArrayWrapped, tokenResponse(), $barcodeArrayWrapped],
+    );
+    $request->initialize(defaultShipmentParams());
+
+    $response = $request->send();
+
+    expect($response->isSuccessful())->toBeTrue()
+        ->and($response->getShipmentId())->toBe('614118757013')
+        ->and($response->getTrackingNumber())->toBe('614118757013')
+        ->and($response->getBarcode())->toBe('^XA...^XZ')
+        ->and($response->getInvoiceId())->toBe('FM378349');
+});
+
 it('sets isCOD=1 and codAmount when cashOnDelivery is true', function () {
     $request = buildCreateShipmentRequest(
         [tokenResponse(), createOrderSuccess(), tokenResponse(), createBarcodeSuccess()],
