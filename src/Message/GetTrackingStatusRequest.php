@@ -17,12 +17,19 @@ use Omniship\Common\Message\ResponseInterface;
  */
 class GetTrackingStatusRequest extends AbstractMngRequest
 {
-    private const TRACK_PATH = '/mngapi/api/standardqueryapi/trackshipment/';
-    private const STATUS_PATH = '/mngapi/api/standardqueryapi/getshipmentstatus/';
+    private const TRACK_BY_REF_PATH = '/mngapi/api/standardqueryapi/trackshipment/';
+    private const TRACK_BY_SHIPMENT_PATH = '/mngapi/api/standardqueryapi/trackshipmentByShipmentId/';
+    private const STATUS_BY_REF_PATH = '/mngapi/api/standardqueryapi/getshipmentstatus/';
+    private const STATUS_BY_SHIPMENT_PATH = '/mngapi/api/standardqueryapi/getshipmentstatusByShipmentId/';
 
     protected function getEndpoint(): string
     {
-        return self::TRACK_PATH . rawurlencode($this->resolveReference());
+        $value = $this->resolveReference();
+        $path = $this->isShipmentIdLike($value)
+            ? self::TRACK_BY_SHIPMENT_PATH
+            : self::TRACK_BY_REF_PATH;
+
+        return $path . rawurlencode($value);
     }
 
     protected function getHttpMethod(): string
@@ -67,9 +74,13 @@ class GetTrackingStatusRequest extends AbstractMngRequest
      */
     private function fetchHeadlineStatus(string $reference): ?array
     {
+        $statusPath = $this->isShipmentIdLike($reference)
+            ? self::STATUS_BY_SHIPMENT_PATH
+            : self::STATUS_BY_REF_PATH;
+
         $response = $this->sendHttpRequest(
             method: 'GET',
-            url: $this->getBaseUrl() . self::STATUS_PATH . rawurlencode($reference),
+            url: $this->getBaseUrl() . $statusPath . rawurlencode($reference),
             headers: [
                 'X-IBM-Client-Id' => $this->getClientId(),
                 'X-IBM-Client-Secret' => $this->getClientSecret(),
@@ -106,5 +117,15 @@ class GetTrackingStatusRequest extends AbstractMngRequest
         $reference = $this->getReferenceId() ?? $this->getTrackingNumber() ?? '';
 
         return $this->normalizeReference($reference);
+    }
+
+    /**
+     * MNG shipment IDs are all-digit numerics like "614118757013".
+     * Reference IDs we generate look like "OMN-XXXXX" (uppercased).
+     * Use this hint to pick between the two query endpoints.
+     */
+    private function isShipmentIdLike(string $value): bool
+    {
+        return $value !== '' && ctype_digit($value);
     }
 }

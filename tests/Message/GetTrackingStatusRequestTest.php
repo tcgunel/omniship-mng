@@ -148,6 +148,27 @@ it('falls back to trackingNumber when referenceId is absent', function () {
     expect($captured[1]->getUri()->getPath())->toEndWith('/trackshipment/FALLBACK-REF');
 });
 
+it('uses ByShipmentId paths when the value is all-digit (MNG shipmentId)', function () {
+    $captured = [];
+    $request = buildTrackingRequest(
+        [trackingTokenResponse(), eventsResponse(), trackingTokenResponse(), statusResponse()],
+        $captured,
+    );
+    $request->initialize([
+        'clientId' => 'cid',
+        'clientSecret' => 'csec',
+        'customerNumber' => 'cust',
+        'password' => 'pw',
+        'testMode' => true,
+        'trackingNumber' => '614118757013', // shipmentId from MNG
+    ]);
+
+    $request->send();
+
+    expect($captured[1]->getUri()->getPath())->toEndWith('/trackshipmentByShipmentId/614118757013')
+        ->and($captured[3]->getUri()->getPath())->toEndWith('/getshipmentstatusByShipmentId/614118757013');
+});
+
 it('throws when neither referenceId nor trackingNumber provided', function () {
     $request = buildTrackingRequest([trackingTokenResponse()]);
     $request->initialize([

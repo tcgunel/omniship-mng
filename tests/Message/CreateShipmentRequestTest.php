@@ -46,7 +46,7 @@ function createBarcodeSuccess(): array
             'invoiceId' => '564645774',
             'shipmentId' => '4536457657',
             'barcodes' => [
-                ['pieceNumber' => 1, 'value' => 'BARCODE-001'],
+                ['pieceNumber' => 1, 'value' => '^XA^FT...^XZ', 'barcode' => 'BARCODE-001'],
             ],
         ], JSON_THROW_ON_ERROR),
         'status' => 200,
@@ -239,7 +239,7 @@ it('handles MNG array-wrapped responses (real-world shape)', function () {
             'referenceId' => 'OMN-XYZ',
             'invoiceId' => 'FM378349',
             'shipmentId' => '614118757013',
-            'barcodes' => [['pieceNumber' => 1, 'value' => '^XA...^XZ']],
+            'barcodes' => [['pieceNumber' => 1, 'value' => '^XA...^XZ', 'barcode' => 'C@6B@H21FMLRPNAAA6J']],
         ]], JSON_THROW_ON_ERROR),
         'status' => 200,
     ];
@@ -254,8 +254,13 @@ it('handles MNG array-wrapped responses (real-world shape)', function () {
     expect($response->isSuccessful())->toBeTrue()
         ->and($response->getShipmentId())->toBe('614118757013')
         ->and($response->getTrackingNumber())->toBe('614118757013')
-        ->and($response->getBarcode())->toBe('^XA...^XZ')
+        ->and($response->getBarcode())->toBe('C@6B@H21FMLRPNAAA6J')
         ->and($response->getInvoiceId())->toBe('FM378349');
+
+    $label = $response->getLabel();
+    expect($label)->not->toBeNull()
+        ->and($label->content)->toBe('^XA...^XZ')
+        ->and($label->format->value)->toBe('ZPL');
 });
 
 it('sets isCOD=1 and codAmount when cashOnDelivery is true', function () {

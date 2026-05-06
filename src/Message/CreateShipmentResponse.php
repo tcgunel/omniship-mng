@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Omniship\MNG\Message;
 
+use Omniship\Common\Enum\LabelFormat;
 use Omniship\Common\Label;
 use Omniship\Common\Message\AbstractResponse;
 use Omniship\Common\Message\ShipmentResponse;
@@ -135,9 +136,37 @@ class CreateShipmentResponse extends AbstractResponse implements ShipmentRespons
     }
 
     /**
+     * Each entry in barcodes[] from MNG carries:
+     *   - value: ZPL label content (use getLabel() for that)
+     *   - barcode: the actual scannable barcode string (Code128, QR data, etc.)
+     *
+     * Older MNG payloads only had `value`; we fall back to that if `barcode`
+     * is missing.
+     *
      * @return list<string>
      */
     public function getBarcodes(): array
+    {
+        $entries = $this->barcodeEntries();
+        $values = [];
+
+        foreach ($entries as $entry) {
+            if (isset($entry['barcode']) && is_string($entry['barcode']) && $entry['barcode'] !== '') {
+                $values[] = (string) $entry['barcode'];
+                continue;
+            }
+            if (isset($entry['value']) && is_string($entry['value'])) {
+                $values[] = (string) $entry['value'];
+            }
+        }
+
+        return $values;
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    private function barcodeEntries(): array
     {
         $barcodeBody = $this->barcodeBody();
 
@@ -149,14 +178,14 @@ class CreateShipmentResponse extends AbstractResponse implements ShipmentRespons
             return [];
         }
 
-        $values = [];
+        $entries = [];
         foreach ($barcodeBody['barcodes'] as $entry) {
-            if (is_array($entry) && isset($entry['value'])) {
-                $values[] = (string) $entry['value'];
+            if (is_array($entry)) {
+                $entries[] = $entry;
             }
         }
 
-        return $values;
+        return $entries;
     }
 
     public function getInvoiceId(): ?string
@@ -172,7 +201,26 @@ class CreateShipmentResponse extends AbstractResponse implements ShipmentRespons
 
     public function getLabel(): ?Label
     {
-        return null;
+        // The first piece's `value` is the printable ZPL label MNG generated.
+        $entries = $this->barcodeEntries();
+        $first = $entries[0] ?? null;
+
+        if (
+            $first === null
+            || !isset($first['value'])
+            || !is_string($first['value'])
+            || $first['value'] === ''
+        ) {
+            return null;
+        }
+
+        return new Label(
+            trackingNumber: $this->getTrackingNumber() ?? '',
+            content: $first['value'],
+            format: LabelFormat::ZPL,
+            barcode: $this->getBarcode(),
+            shipmentId: $this->getShipmentId(),
+        );
     }
 
     public function getTotalCharge(): ?float
