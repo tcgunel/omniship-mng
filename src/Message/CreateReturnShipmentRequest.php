@@ -128,7 +128,8 @@ class CreateReturnShipmentRequest extends AbstractMngRequest
     private function buildCustomer(Address $address): array
     {
         return [
-            'customerId' => 0,
+            // Omit customerId — MNG rejects when both customerId and fullName
+            // are set. We always send fullName/address-style payload.
             'refCustomerId' => '',
             'cityCode' => (int) $this->getRecipientCityCode(),
             'cityName' => $address->city ?? '',

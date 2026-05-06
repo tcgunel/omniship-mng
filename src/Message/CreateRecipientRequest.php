@@ -53,7 +53,9 @@ class CreateRecipientRequest extends AbstractMngRequest
 
         return [
             'recipient' => [
-                'customerId' => 0,
+                // Intentionally omit customerId — MNG requires it to be empty
+                // when fullName/address fields are filled (validation 26057
+                // family). We always send the address-style payload here.
                 'refCustomerId' => '',
                 'cityCode' => (int) $this->getRecipientCityCode(),
                 'cityName' => $shipTo->city ?? '',
