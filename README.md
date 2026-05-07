@@ -113,7 +113,7 @@ if ($response->isSuccessful()) {
 
 ## 3-stage shipment flow
 
-MNG's integration team explicitly recommends a **three-stage** flow rather than the obvious two-step one. Calling `createOrder` and `createbarcode` back-to-back can fail with "no destination" errors because MNG hasn't had time to resolve the destination branch from the recipient address.
+MNG's integration team frames a **three-stage** flow as a recommendation. **In practice it's mandatory** — without it, calling `createOrder` and `createbarcode` back-to-back consistently fails with `20001 VARIŞ ŞUBESİ BULUNAMADI` because MNG hasn't finished resolving the destination branch from the recipient address. Even spreading createOrder and createbarcode 10–15 seconds apart isn't enough; MNG needs **minutes** of background processing. Pre-registering via Plus Command at order-placement time is what gives them that runway.
 
 The recommended flow:
 
