@@ -118,9 +118,9 @@ abstract class AbstractMngRequest extends AbstractHttpRequest
         return (float) ($this->getParameter('codAmount') ?? 0.0);
     }
 
-    public function setCodAmount(float $codAmount): static
+    public function setCodAmount(float|int|string $codAmount): static
     {
-        return $this->setParameter('codAmount', $codAmount);
+        return $this->setParameter('codAmount', (float) $codAmount);
     }
 
     public function getReferenceId(): ?string
