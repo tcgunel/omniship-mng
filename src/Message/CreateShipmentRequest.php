@@ -38,6 +38,25 @@ class CreateShipmentRequest extends AbstractMngRequest
     }
 
     /**
+     * Whether to chain the second step (createBarcode) after createOrder.
+     *
+     * Defaults to true to preserve the historical two-step behaviour. Set to
+     * false for merchants that don't print labels, or whose MNG account isn't
+     * subscribed to the Barcode Command API product. When false the shipment
+     * is registered (order placed) but no ZPL label / scannable barcode is
+     * generated, and tracking falls back to the referenceId.
+     */
+    public function getCreateBarcode(): bool
+    {
+        return (bool) ($this->getParameter('createBarcode') ?? true);
+    }
+
+    public function setCreateBarcode(bool $value): static
+    {
+        return $this->setParameter('createBarcode', $value);
+    }
+
+    /**
      * @return array<string, mixed>
      */
     public function getData(): array
@@ -84,6 +103,18 @@ class CreateShipmentRequest extends AbstractMngRequest
             && $this->isOrderAlreadyExistsError($orderBody);
 
         if ($orderSucceeded || $orderAlreadyExists) {
+            // Merchant (or their MNG account) opted out of barcode creation —
+            // stop after createOrder. Success then rests on the order alone.
+            if (!$this->getCreateBarcode()) {
+                return new CreateShipmentResponse($this, [
+                    'order' => $orderBody,
+                    'barcode' => null,
+                    'orderHttpStatus' => $orderAlreadyExists ? 200 : $statusCode,
+                    'barcodeHttpStatus' => null,
+                    'barcodeSkipped' => true,
+                ]);
+            }
+
             $barcodeBody = $this->callCreateBarcode();
 
             return new CreateShipmentResponse($this, [

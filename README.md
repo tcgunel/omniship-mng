@@ -193,9 +193,33 @@ Two HTTP calls under the hood:
 
 Both must succeed for `isSuccessful()` to return true. Each call does one Identity token fetch unless caching is configured.
 
+#### Making the barcode step optional
+
+The second call (`createbarcode`) is what invoices the order and returns the printable ZPL label + scannable barcode. Not every merchant wants or can use it:
+
+- Some merchants don't print labels at all.
+- The **Barcode Command** API product is enabled per-account by MNG; an account that isn't subscribed will fail on `createbarcode`.
+
+Pass `createBarcode => false` to stop after `createOrder`:
+
+```php
+$mng->createShipment([
+    // ...usual fields...
+    'createBarcode' => false,
+])->send();
+```
+
+When disabled:
+- Only `createOrder` is called (one fewer HTTP round-trip).
+- `isSuccessful()` reflects the order outcome alone.
+- `getBarcode()` / `getLabel()` return `null` (no label is generated).
+- `getShipmentId()` falls back to the order's `orderInvoiceId` and `getTrackingNumber()` to the `referenceId` — both usable with `getTrackingStatus()`, which tracks by referenceId as well as shipmentId.
+
+The default is `true`, preserving the historical two-step behaviour.
+
 Required fields: `clientId`, `clientSecret`, `customerNumber`, `password`, `referenceId`, `shipTo`, `recipientCityCode`, `recipientDistrictCode`.
 
-Optional fields with sensible defaults: `shipmentServiceType` (1=STANDART), `packagingType` (3=PAKET), `deliveryType` (1=ADRESE_TESLIM), `paymentType` (PaymentType::SENDER → 1), `cashOnDelivery` (false), `codAmount` (0), SMS preferences (all off), `marketPlaceShortCode` / `marketPlaceSaleCode` (empty), `billOfLandingId` / `invoiceNumber` (empty), `content` (falls back to first package description), `description` (same fallback), `recipientTaxNumber` (falls back to address `taxId` then `nationalId`).
+Optional fields with sensible defaults: `createBarcode` (true), `shipmentServiceType` (1=STANDART), `packagingType` (3=PAKET), `deliveryType` (1=ADRESE_TESLIM), `paymentType` (PaymentType::SENDER → 1), `cashOnDelivery` (false), `codAmount` (0), SMS preferences (all off), `marketPlaceShortCode` / `marketPlaceSaleCode` (empty), `billOfLandingId` / `invoiceNumber` (empty), `content` (falls back to first package description), `description` (same fallback), `recipientTaxNumber` (falls back to address `taxId` then `nationalId`).
 
 `referenceId` is auto-uppercased before sending. MNG enforces uniqueness per-customer.
 

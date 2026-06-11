@@ -20,6 +20,13 @@ class CreateShipmentResponse extends AbstractResponse implements ShipmentRespons
             return false;
         }
 
+        // Barcode creation was intentionally skipped (merchant disabled it, or
+        // the MNG account isn't subscribed to the Barcode Command product).
+        // The order placed successfully, so the shipment is considered created.
+        if ($this->boolField('barcodeSkipped')) {
+            return true;
+        }
+
         if ($barcodeHttp === null) {
             return false;
         }
@@ -264,5 +271,10 @@ class CreateShipmentResponse extends AbstractResponse implements ShipmentRespons
         }
 
         return is_int($this->data[$key]) ? $this->data[$key] : null;
+    }
+
+    private function boolField(string $key): bool
+    {
+        return is_array($this->data) && ($this->data[$key] ?? false) === true;
     }
 }

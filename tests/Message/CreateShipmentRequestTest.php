@@ -150,6 +150,49 @@ it('sends two-step createOrder + createBarcode and exposes shipmentId/barcode', 
         ->and($barcodeReq->getUri()->getPath())->toContain('/barcodecmdapi/createbarcode');
 });
 
+it('skips createBarcode when createBarcode is false and stays successful on order alone', function () {
+    $captured = [];
+    $request = buildCreateShipmentRequest(
+        // Only token + createOrder — no barcode responses are consumed.
+        [tokenResponse(), createOrderSuccess()],
+        $captured,
+    );
+    $request->initialize(array_merge(defaultShipmentParams(), ['createBarcode' => false]));
+
+    $response = $request->send();
+
+    expect($response->isSuccessful())->toBeTrue()
+        // No barcode step → no scannable barcode or ZPL label.
+        ->and($response->getBarcode())->toBeNull()
+        ->and($response->getLabel())->toBeNull()
+        // Tracking falls back to the order's identifiers.
+        ->and($response->getShipmentId())->toBe('456764543')
+        ->and($response->getTrackingNumber())->toBe('SIPARIS-001');
+
+    // Exactly 2 HTTP calls: token → createOrder. createbarcode is never hit.
+    expect(count($captured))->toBe(2)
+        ->and($captured[1]->getUri()->getPath())->toContain('/standardcmdapi/createOrder');
+    foreach ($captured as $req) {
+        expect($req->getUri()->getPath())->not->toContain('/createbarcode');
+    }
+});
+
+it('still calls createBarcode by default (createBarcode defaults to true)', function () {
+    $captured = [];
+    $request = buildCreateShipmentRequest(
+        [tokenResponse(), createOrderSuccess(), tokenResponse(), createBarcodeSuccess()],
+        $captured,
+    );
+    // No createBarcode key set → defaults to true.
+    $request->initialize(defaultShipmentParams());
+
+    $response = $request->send();
+
+    expect($response->isSuccessful())->toBeTrue()
+        ->and($response->getBarcode())->toBe('BARCODE-001');
+    expect($captured[3]->getUri()->getPath())->toContain('/barcodecmdapi/createbarcode');
+});
+
 it('marks response as not successful when createOrder fails', function () {
     $captured = [];
     $request = buildCreateShipmentRequest(
