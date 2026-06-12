@@ -6,6 +6,7 @@ namespace Omniship\MNG;
 
 use Omniship\Common\AbstractHttpCarrier;
 use Omniship\Common\Message\RequestInterface;
+use Omniship\MNG\Message\CancelOrderRequest;
 use Omniship\MNG\Message\CancelShipmentRequest;
 use Omniship\MNG\Message\CreateRecipientRequest;
 use Omniship\MNG\Message\CreateReturnShipmentRequest;
@@ -82,6 +83,14 @@ class Carrier extends AbstractHttpCarrier
     public function cancelShipment(array $options = []): RequestInterface
     {
         return $this->createRequest(CancelShipmentRequest::class, $options);
+    }
+
+    /**
+     * @param array<string, mixed> $options
+     */
+    public function cancelOrder(array $options = []): RequestInterface
+    {
+        return $this->createRequest(CancelOrderRequest::class, $options);
     }
 
     /**

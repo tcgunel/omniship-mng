@@ -16,6 +16,7 @@ PHP 8.2+ carrier driver for the **MNG Kargo / DHL eCommerce REST API**, built fo
   - [createShipment](#createshipment)
   - [createReturnShipment](#createreturnshipment)
   - [cancelShipment](#cancelshipment)
+  - [cancelOrder](#cancelorder)
   - [getTrackingStatus](#gettrackingstatus)
   - [getCities / getDistricts (CBS Info)](#getcities--getdistricts-cbs-info)
 - [JWT caching](#jwt-caching)
@@ -41,7 +42,7 @@ You'll get back two keys: `X-IBM-Client-Id` and `X-IBM-Client-Secret`. These ide
 | Product | Used for | Required? |
 |---|---|---|
 | Identity 1.0.1 | minting JWTs | ✅ yes |
-| Standard Command 1.0.0 | `createOrder` | ✅ yes |
+| Standard Command 1.0.0 | `createOrder`, `cancelorder` | ✅ yes |
 | Standard Query 1.0.0 | tracking | ✅ yes |
 | Barcode Command 1.0.0 | `createbarcode`, `cancelshipment` | ✅ yes |
 | Plus Command 1.0.0 | `createRecipient` (3-stage flow) | ✅ yes |
@@ -256,12 +257,24 @@ echo $response->getReturnLabelUrl(); // https://mn.tc?rtnid=...
 
 `PUT /mngapi/api/barcodecmdapi/cancelshipment` with body `{referenceId, shipmentId}`.
 
-Per MNG's integration team, this is the **preferred** cancel method (over Standard Command's `/cancelorder/{ref}`). Cancellation is only valid until the parcel is scanned/accepted at an MNG branch, on the same day the barcode was printed.
+Cancels the **barcode** issued by createbarcode. Cancellation is only valid until the parcel is scanned/accepted at an MNG branch, on the same day the barcode was printed.
 
 ```php
 $mng->cancelShipment([
     'referenceId' => 'OMN-12345',     // your reference
     'shipmentId'  => '614118757013',  // MNG's shipment id from createShipment
+])->send();
+```
+
+### cancelOrder
+
+`PUT /mngapi/api/standardcmdapi/cancelorder/{referenceId}` with no body. Cancels the **order** created by createOrder.
+
+Per MNG's integration team, full cancellation is two steps when a barcode was issued: first `cancelShipment` (cancels the barcode), then `cancelOrder` (cancels the order). When createbarcode never ran (the optional-barcode flow), `cancelOrder` alone is the correct and only call.
+
+```php
+$mng->cancelOrder([
+    'referenceId' => 'OMN-12345',
 ])->send();
 ```
 
