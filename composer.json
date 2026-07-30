@@ -5,7 +5,7 @@
     "license": "MIT",
     "require": {
         "php": "^8.2",
-        "tcgunel/omniship-common": "^0.0.1",
+        "tcgunel/omniship-common": "^0.1",
         "ext-json": "*",
         "psr/simple-cache": "^1.0 || ^2.0 || ^3.0"
     },
